@@ -1,0 +1,8 @@
+# AI-generated media (auto-downloaded by .claude/hooks/fal-download.ps1)
+download/
+
+# Free asset libraries (reproducible via .claude/scripts/download-kenney.ps1)
+refs/kenney/
+
+# Local Claude Code overrides
+.claude/settings.local.json

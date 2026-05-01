@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__fal-ai__run_model|mcp__fal-ai__submit_job",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File \".claude/hooks/fal-download.ps1\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

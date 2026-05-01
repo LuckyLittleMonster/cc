@@ -1,0 +1,217 @@
+# CLAUDE.md · 项目根（L2 · 游戏综合层）
+
+> **L2 模板**：游戏项目根 CLAUDE.md。**消费方需填充** `[占位符]`。
+> 本层叠加在 `~/.claude/CLAUDE.md`（L1 工程姿态）之上；引擎子层（如 `unity/` `godot/` `unreal/`）按需在 L3 子目录追加。
+> 修订路径：改 `cc/project/CLAUDE.md.template` → `install` 时 cp 到 `<project>/CLAUDE.md` 并替换占位符。
+> 上游层级合约：`cc/docs/03-hierarchy-design.md`；本层设计文档：`cc/docs/05-gamedev-rules.md`。
+
+---
+
+## 1. 项目身份
+
+- **项目名**：`[项目名]`
+- **类型**：`[2D / 3D / 2.5D]` `[单人 / 多人]` `[休闲 / 角色扮演 / 策略 / 模拟 / 平台 / ...]`
+- **引擎**：`[Unity 6.x LTS / Godot 4.x / Unreal 5.x / 自研 / ...]`（→ L3 子层细化）
+- **主语言**：`[C# / GDScript / C++ / Python（数据策划） / ...]`
+- **目标平台**：`[Windows / Mac / Linux / iOS / Android / Web / Switch / ...]`
+- **多子项目**：`[是 / 否]`（见 §7）
+
+---
+
+## 2. 本层（L2）服务于什么
+
+L2 = "游戏项目，但不绑定具体引擎"。规则换 Unity → Godot 仍成立。
+
+**叠加关系**：
+- L1（`~/.claude/`）：跨项目工程姿态，自动加载
+- **L2（本文件）：游戏项目根，含游戏角色 agent / 设计 skill / 数据规范**
+- L3（引擎子层 + 美术 + 音频；典型路径见 §8）：引擎特化 / 美术 / 音频，按子树触发
+
+---
+
+## 3. Donchitos 资源索引
+
+### 3.1 Agents（21 个，`.claude/agents/`）
+
+按"何时使用"分组：
+
+| 场景 | Agent |
+|---|---|
+| **Tier 1 · 视野** | `creative-director` `technical-director` `producer` |
+| **Tier 2 · 部门 lead** | `game-designer` `lead-programmer` `qa-lead` `narrative-director` |
+| 设计专家 | `systems-designer` `level-designer` **`economy-designer`** |
+| 编程专家（角色） | `gameplay-programmer` `engine-programmer` `ai-programmer` `ui-programmer` `tools-programmer` |
+| 内容 | `writer` `world-builder` |
+| UX / QA | `ux-designer` `qa-tester` |
+| 性能 / 原型 | `performance-analyst` `prototyper` |
+
+引擎专家（具体名称按引擎，如 `unity-specialist` / `godot-specialist` / `unreal-specialist`）在 L3 对应引擎子层。美术 / 音频 lead 在 L3 `art/` `audio/` 子层。
+
+**协作协议**（来自 Donchitos，扩展 L1）：游戏开发场景下 agent 写文件前主动询问 "May I write this to [filepath]?"。L1 默认不强制此协议；L2 显式启用，理由是游戏架构决策不可逆，应用户预审。
+
+**Agent 协调与 delegation**：tier 1 → tier 2 → tier 3 委派协议见 `.claude/docs/coordination/`：
+- `agent-roster.md` — 完整 agent 目录与 model 选择
+- `agent-coordination-map.md` — 谁委托给谁
+- `coordination-rules.md` — 委托规则
+- `director-gates.md` — Tier 1 审批门
+
+### 3.2 Skills（25 个，`.claude/skills/`）
+
+| 工作流 | Slash command |
+|---|---|
+| 入口 | `/start` `/setup-engine`（如 `/setup-engine unity`） |
+| 设计 | `/brainstorm` `/quick-design` `/design-system` `/propagate-design-change` `/map-systems` |
+| 架构 | `/create-architecture` `/architecture-decision` |
+| Sprint / Story | `/create-stories` `/dev-story` `/sprint-plan` `/story-done` `/estimate` |
+| 评审 | `/design-review` **`/balance-check`** `/scope-check` `/perf-profile` |
+| Bug / playtest | `/bug-report` `/bug-triage` **`/playtest-report`** |
+| 制作 | `/milestone-review` `/release-checklist` |
+| 创意 | `/prototype` |
+| UX | `/ux-design` `/ux-review` |
+
+### 3.3 Path-scoped Rules（7 个，`.claude/rules/path-scoped/`）
+
+agents 在编辑相关路径时**主动引用**对应 rule（不是 Claude Code 自动按路径加载，是约定）：
+
+| Rule | 适用路径（约定） |
+|---|---|
+| `design-docs.md` | `design/**` |
+| **`data-files.md`** | `data/**` `*.json` `*.yaml` `*.csv` |
+| `test-standards.md` | `tests/**` `**/*_test.{cs,py}` |
+| `prototype-code.md` | `prototypes/**` |
+| `gameplay-code.md` | 玩法代码（具体引擎 API 在 L3 引擎子层） |
+| `ai-code.md` | AI / NPC 行为代码 |
+| `narrative.md` | `narrative/**` `dialogue/**` |
+
+### 3.4 Python 数据策划工具链
+
+> **`[本项目使用 Python：是 / 否]`**
+> **如选"否"：直接删除本节 §3.4。**
+> **如选"是"：保留本节；以下资源会随 L2 部署自动到位**：
+
+- `agents/python-reviewer.md`
+- `rules/python/{coding-style,patterns,security,testing,hooks}.md`
+- `skills/{python-patterns,python-testing}/`
+- `commands/python-review.md`
+
+典型用途：公式表抽取、经济模拟、平衡校验、AI 训练（如 MCTS、深度学习）等。
+
+---
+
+## 4. 数据策划工作流
+
+> 仅当本项目使用表驱动设计时本节适用。
+
+典型形态：
+- **设计表**：Excel / CSV / YAML / JSON 中的公式、配置、平衡数值
+- **抽取脚本**：Python 把设计表转换成游戏可读格式
+- **运行时**：游戏代码读取已转换数据
+- **平衡校验**：Python 模拟（如经济系统、战斗模拟）验证设计表合理性
+
+**协作约定**：
+- 设计表改动触发 `data-files.md` rule（命名 / 列规范 / 版本控制）
+- 抽取脚本归 `rules/python/` 管
+- 平衡模拟用 `/balance-check` skill
+- 大改动走 `/propagate-design-change` skill
+
+---
+
+## 5. Sprint / Playtest / Milestone 默认流程
+
+### Sprint 周期
+1. `/sprint-plan` — 规划 sprint，含目标与 stories
+2. `/create-stories` 或 `/dev-story` — 把 epic 拆为可实现 story
+3. `/dev-story` — 实现 story，含设计 + code + test
+4. `/story-done` — story 完成验收
+5. `/milestone-review` — milestone 终结评审
+
+### Playtest 流程
+1. 实现可玩切片
+2. 内部 / 外部测试
+3. `/playtest-report` — 结构化记录反馈
+4. `/bug-triage` 处理 bug
+5. `/balance-check` 验证数值变化
+
+### Release
+1. `/scope-check` 确认范围
+2. `/release-checklist` 部署前检查
+3. `/perf-profile` 性能基线
+
+---
+
+## 6. 技术规范
+
+### 6.1 通用代码风格
+
+继承 L1 `~/.claude/rules/common/`（自动加载）。本层不重复。
+
+### 6.2 游戏代码风格
+
+继承 `rules/path-scoped/gameplay-code.md`（编辑相关路径时引用）。
+
+### 6.3 数据文件
+
+继承 `rules/path-scoped/data-files.md`。关键约定：
+- CSV 第一列必须是稳定 ID
+- YAML / JSON 用 schema 校验
+- Excel 不进 git；CSV 进
+- 改动需在 `design/changelog.md` 留痕
+
+### 6.4 测试
+
+- 测试代码遵循 `rules/path-scoped/test-standards.md`
+- 数据驱动测试覆盖关键公式
+- 平衡测试不要 mock 实际数据
+
+---
+
+## 7. 多子项目工作区
+
+`[多子项目: 是]` 时本节适用。
+
+### 7.1 部署形态
+
+- **每子游戏项目独立**：每个游戏子项目根有自己的 `CLAUDE.md`（本模板）
+- **非游戏子项目**（如文档库 / 工具仓）：不部署 L2，仅继承 L1
+- **工作区根 CLAUDE.md**：可选；若有则只做导航（介绍各子项目，不重复 L2 内容）
+
+### 7.2 典型布局
+
+```
+<workspace>/
+├── CLAUDE.md                     可选导航文件，不部署 L2
+├── <game-A>/
+│   └── CLAUDE.md                 ← L2 部署点
+├── <game-B>/
+│   └── CLAUDE.md                 ← L2 部署点
+└── <non-game-tool>/
+    └── (无 L2)                    仅继承 L1
+```
+
+部署由 `install --layer project --target <subproject-path>` 完成（详见 09-install-design.md，待写）。
+
+---
+
+## 8. 引擎子层（L3）位置
+
+本项目引擎子层挂在：`[填实际路径]`
+
+**典型布局**（按引擎）：
+- Unity：`Assets/Scripts/.claude/`（脚本）+ `Assets/Art/.claude/`（美术）+ `Assets/Audio/.claude/`（音频）
+- Godot：`addons/.claude/` 或 `scripts/.claude/`，美术 / 音频按项目自定
+- Unreal：`Source/.claude/`，美术 / 音频按项目自定
+- 自研引擎：自定义
+
+L3 加载条件：Claude 编辑该子树文件时叠加。L3 内容：
+- 引擎专家 agents（`[engine]-specialist` 系列）
+- Shader / 美术工作流（→ 美术子层）
+- 音频工作流（→ 音频子层）
+- engine-code / shader-code / network-code / ui-code path-scoped rules
+
+---
+
+## 9. 修订
+
+- 改本文件 = 改 `cc/project/CLAUDE.md.template` → install 同步到 `<project>/CLAUDE.md`
+- 添加 / 删除 agents / skills / rules：同步 `cc/project/MANIFEST.md`
+- 升级 Donchitos：按 `03-hierarchy-design.md §7` 流程

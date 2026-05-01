@@ -1,0 +1,152 @@
+# CLAUDE.md · Unity 子层（L3 · `<project>/<unity-subdir>/`）
+
+> **L3 模板**：Unity 子层 CLAUDE.md。**消费方需填充** `[占位符]`。
+> 加载条件：Claude 编辑本子树文件时叠加，叠在 L1 (`~/.claude/`) + L2 (`<project>/CLAUDE.md`) 之上。
+> 修订路径：改 `cc/unity/CLAUDE.md.template` → install 时 cp 到 `<project>/<unity-subdir>/CLAUDE.md` 并替换占位符。
+> 上游层级合约：`cc/docs/03-hierarchy-design.md`；本层设计文档：`cc/docs/06-unity-rules.md`。
+
+---
+
+## 1. Unity 子层身份
+
+- **Unity Version**：`[6000.0.x LTS / 2022.3.x LTS / ...]`
+- **Render Pipeline**：`[URP / HDRP / Built-in]`
+- **Input System**：`[New Input System / 旧 Input Manager / 混用]`
+- **Scripting Backend**：`[IL2CPP / Mono]`
+- **DI Framework**：`[VContainer / Reflex / Zenject / 无]`
+- **Asset Pipeline**：`[Addressables / AssetBundles / Resources]`
+- **UI**：`[UI Toolkit / UGUI / 混用]`
+- **目标平台**：`[Windows / Mac / Linux / iOS / Android / Switch / PS / Xbox / Web]`
+
+> 这 8 项决定 engine-reference 中哪些章节适用。**填实后保留**——agents 在大决策前会引用本层 `[占位符]` 校验设定。
+
+---
+
+## 2. 在层级中的位置
+
+```
+~/.claude/CLAUDE.md                       L1 · 跨项目工程姿态（自动加载）
+<project>/CLAUDE.md                       L2 · 游戏综合（叠加）
+<project>/<unity-subdir>/CLAUDE.md        ← 本文件 · L3 unity（编辑本子树时叠加）
+```
+
+L3 art (`Assets/Art/.claude/`) 和 L3 audio (`Assets/Audio/.claude/`) 与本层平级，分别覆盖美术资产 / 音频资产工作流。
+
+---
+
+## 3. Donchitos Unity Agents（5 个，`.claude/agents/`）
+
+| Agent | 何时使用 |
+|---|---|
+| **`unity-specialist`** | Unity 总体决策：MonoBehaviour vs DOTS、URP/HDRP 选型、Addressables 战略、Profiler 解读 |
+| `unity-dots-specialist` | DOTS / ECS / Jobs / Burst compiler / Hybrid Renderer 实现 |
+| `unity-shader-specialist` | Shader Graph / VFX Graph / URP/HDRP 自定义 / post-processing |
+| `unity-addressables-specialist` | Addressable groups / async loading / 内存策略 / content delivery |
+| `unity-ui-specialist` | UI Toolkit / UXML/USS / UGUI Canvas / data binding / 跨平台输入 |
+
+**默认行为**：Unity 引擎相关任务优先调 `unity-specialist`；其将根据子主题转交对应 sub-specialist。
+
+**与 L2 `engine-programmer` 的边界**：L2 那个 agent 只做角色协调（描述任务、规划资源）；任何具体 Unity 引擎实现（rendering / physics / memory / build / 子系统调用）由本层 `unity-specialist` 接管。
+
+ECC 通用 `csharp-reviewer` agent 仍保留（baseline）——做与 Unity 无关的 C# 风格审查时用；Unity 特化由 `unity-specialist` 接管，详见 §6。
+
+---
+
+## 4. Skills（2 dirs，`.claude/skills/`）
+
+| Skill | 用途 | 来源 |
+|---|---|---|
+| `csharp-testing` | NUnit 测试模式（baseline） | ECC |
+| `dotnet-patterns` | .NET 通用模式参考（baseline，少用） | ECC |
+
+> **`/setup-engine` 在 L2**（`<project>/.claude/skills/setup-engine/`），不在本层。它是多引擎初始化向导，需要在进入本子树**之前**就能调用——因此放 L2。
+
+**自写候选**（按需，未来工作）：见 `cc/docs/06-unity-rules.md §4.3`，含 `unity-urp-shader-recipes` `unity-addressables-loader` `unity-input-system-bindings` `unity-di-vcontainer` `unity-monobehaviour-lifecycle` `unity-allocation-hotpath` 等。
+
+---
+
+## 5. Path-scoped Rules（4 + 5 个，`.claude/rules/`）
+
+agents / Claude 编辑相关路径时**主动引用**对应 rule（约定式触发）：
+
+### 5.1 Donchitos path-scoped（`.claude/rules/path-scoped/`）
+
+| Rule | 适用路径（约定） |
+|---|---|
+| `engine-code.md` | `Assets/Scripts/Engine/**` 等引擎内部代码 |
+| **`shader-code.md`** | `Assets/Shaders/**` `*.shader` `*.hlsl` `*.shadergraph` |
+| `ui-code.md` | `Assets/Scripts/UI/**` `*.uxml` `*.uss` |
+| `network-code.md` | `Assets/Scripts/Net/**` 等 |
+
+### 5.2 ECC csharp baseline（`.claude/rules/csharp/`）
+
+通用 C# 风格；Unity 特化以 `unity-specialist` 决策为准。详见 §6。
+
+| Rule | 内容 |
+|---|---|
+| `coding-style.md` | C# 代码风格（命名、文件组织） |
+| `patterns.md` | C# 通用设计模式 |
+| `security.md` | C# 安全（不依赖 Unity 上下文） |
+| `testing.md` | C# 测试约定（NUnit 通用） |
+| `hooks.md` | C# 项目钩子集成 |
+
+---
+
+## 6. ECC csharp baseline 与 Unity 实际差异
+
+ECC `rules/csharp/` 与 `csharp-reviewer` 偏 **.NET / Web 后端**：依赖注入是 ASP.NET Core DI、async/await 是 web 请求模型、测试是 xUnit / 通用 NUnit。Unity 是不同生态。
+
+**差异点**（编辑 Unity C# 代码时优先于 ECC 规则）：
+
+| 维度 | ECC baseline | Unity 实际 |
+|---|---|---|
+| **DI** | ASP.NET Core 内置 DI | `[VContainer / Reflex / Zenject]` |
+| **生命周期** | DI 容器管理 | MonoBehaviour Awake/Start/OnEnable/Update/...； ScriptableObject |
+| **async** | Task + Async | UniTask / awaitable / 协程边界（依 MonoBehaviour） |
+| **测试** | xUnit / 通用 NUnit | NUnit + Unity Test Framework（Edit Mode / Play Mode） |
+| **性能** | web 请求延迟 | Update GC 分配；Burst-compatible 代码；内存帧 |
+| **反射** | 无限制 | IL2CPP AOT 限制（部分反射 / 动态代码不可用） |
+
+**协作约定**：编辑 Unity C# 文件时 `unity-specialist` 优先；csharp-reviewer 做与 Unity 无关的纯 C# 风格审查。
+
+---
+
+## 7. Engine-reference 文档（16 文件，`.claude/docs/engine-reference/`）
+
+按主题速查：
+
+| 文档 | 用途 |
+|---|---|
+| `VERSION.md` | **消费者填**当前 Unity 版本，作为下面 docs 的版本基线 |
+| `current-best-practices.md` | Unity 通用最佳实践 |
+| `breaking-changes.md` | 跨版本破坏性 API 变更速查 |
+| `deprecated-apis.md` | 已弃用 API 速查（避免在新代码中使用） |
+| `PLUGINS.md` | 插件总览 |
+
+### 7.1 Modules（8 个）
+
+`modules/animation.md` · `audio.md`（Unity AudioSource/Mixer **API**） · `input.md` · `navigation.md` · `networking.md` · `physics.md` · `rendering.md` · `ui.md`
+
+### 7.2 Plugins（3 个）
+
+`plugins/addressables.md` · `cinemachine.md` · `dots-entities.md`
+
+---
+
+## 8. 编辑 `Assets/**` 时的协作约定
+
+1. 编辑 `Assets/Scripts/**` C# → `unity-specialist` 主导，`engine-code.md` / `gameplay-code.md`（来自 L2）作为风格参考
+2. 编辑 `Assets/Shaders/**` → `unity-shader-specialist` 主导，`shader-code.md` 风格规范，shader 视觉风格交叉参考 L3 art
+3. 编辑 UI（UXML / USS / Canvas） → `unity-ui-specialist` 主导，`ui-code.md` 规范
+4. 编辑 Addressable groups / async loaders → `unity-addressables-specialist`
+5. 编辑 ECS / Jobs / Burst → `unity-dots-specialist`
+6. 改 Unity 版本 / 管线 / Input System / DI → 必须先开 `/architecture-decision`（L2 skill），更新本 CLAUDE.md.template 占位符
+
+---
+
+## 9. 修订
+
+- 改本文件 = 改 `cc/unity/CLAUDE.md.template` → install 同步到 `<project>/<unity-subdir>/CLAUDE.md`
+- 添加 / 删除 unity-* skill：同步 `cc/unity/MANIFEST.md`
+- 升级 Unity 版本：更新 `engine-reference/VERSION.md` + 检查 `breaking-changes.md` 与本文件占位符
+- 升级 Donchitos：按 `03-hierarchy-design.md §7` 流程

@@ -1,0 +1,34 @@
+# cc/unity/rules/path-scoped/_paths.yaml
+# Path-scoped rule auto-trigger configuration (per 09 §6.2).
+# Read by post-edit hook → match file_path → emit reminder to load corresponding rule.
+#
+# Status: stub for v3 hook implementation. Currently rules are referenced by convention only.
+# Note: paths assume Unity-style Assets/ structure; consumers using other engines will need to adapt.
+
+rules:
+  - rule: engine-code.md
+    paths:
+      - "Assets/Scripts/Engine/**"
+      - "Assets/Scripts/Core/**"
+      - "**/Engine/**"
+
+  - rule: shader-code.md
+    paths:
+      - "Assets/Shaders/**"
+      - "**/*.shader"
+      - "**/*.hlsl"
+      - "**/*.shadergraph"
+      - "**/*.shadersubgraph"
+
+  - rule: ui-code.md
+    paths:
+      - "Assets/Scripts/UI/**"
+      - "Assets/UI/**"
+      - "**/*.uxml"
+      - "**/*.uss"
+
+  - rule: network-code.md
+    paths:
+      - "Assets/Scripts/Net/**"
+      - "Assets/Scripts/Networking/**"
+      - "**/Networking/**"

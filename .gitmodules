@@ -1,0 +1,15 @@
+[submodule "refs/claude-code-game-studios"]
+	path = refs/claude-code-game-studios
+	url = https://github.com/Donchitos/Claude-Code-Game-Studios.git
+[submodule "refs/everything-claude-code"]
+	path = refs/everything-claude-code
+	url = https://github.com/affaan-m/everything-claude-code
+[submodule "refs/pixel-plugin"]
+	path = refs/pixel-plugin
+	url = https://github.com/willibrandon/pixel-plugin.git
+[submodule "refs/game-art-skill"]
+	path = refs/game-art-skill
+	url = https://github.com/pronitdas/game-art-skill.git
+[submodule "refs/fmod-mcp"]
+	path = refs/fmod-mcp
+	url = https://github.com/jmperez127/fmod-mcp.git

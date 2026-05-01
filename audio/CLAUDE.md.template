@@ -1,0 +1,205 @@
+# CLAUDE.md · 音频子层（L3 · `<project>/<audio-subdir>/`）
+
+> **L3 模板**：音频子层 CLAUDE.md。**消费方需填充** `[占位符]`。
+> 加载条件：Claude 编辑本子树文件时叠加，叠在 L1 (`~/.claude/`) + L2 (`<project>/CLAUDE.md`) 之上。
+> 修订路径：改 `cc/audio/CLAUDE.md.template` → install 时 cp 到 `<project>/<audio-subdir>/CLAUDE.md`。
+> 上游层级合约：`cc/docs/03-hierarchy-design.md`；本层设计文档：`cc/docs/08-audio-rules.md`。
+
+---
+
+## 1. 音频子层身份
+
+- **采样率**：`[44.1kHz / 48kHz / 22kHz]`
+- **比特深度**：`[16-bit / 24-bit / 32-bit float]`
+- **主格式**：`[.wav 无损 / .ogg Vorbis Q8 / .mp3 / .flac]`
+- **Middleware**：`[FMOD / Wwise / Unity 内置 / Sound Bakery / 不用]`
+- **响度目标**：`[-23 LUFS（游戏） / -16 LUFS（流媒体） / -18 LUFS（移动）]`
+- **True Peak 上限**：`[-1 dBTP / -3 dBTP]`
+- **VO 语言**：`[zh-CN / en-US / ...]`
+- **音乐风格基调**：`[一句话定调，详细见 audio bible（如有）]`
+
+> 这 8 项决定推荐外部插件、命名规范、import 参数。**填实后保留**。
+
+---
+
+## 2. 在层级中的位置
+
+```
+~/.claude/CLAUDE.md                       L1 · 跨项目工程姿态
+<project>/CLAUDE.md                       L2 · 游戏综合
+<project>/<engine-subdir>/CLAUDE.md       L3 · 引擎子层（如 unity）
+<project>/<art-subdir>/CLAUDE.md          L3 · art（同级）
+<project>/<audio-subdir>/CLAUDE.md        ← 本文件 · L3 audio（编辑音频时叠加）
+```
+
+**与引擎子层的边界**：本层管音频资产、响度、命名、middleware 选型；AudioSource / AudioMixer **API** 调用代码归引擎子层（典型 06 unity）。详见 `cc/docs/08-audio-rules.md §6`。
+
+**与 07 art 的边界**：trailer / cinematic 等跨界，详见 `08-audio-rules.md §7`。
+
+---
+
+## 3. Donchitos Audio Agents（2 个，`.claude/agents/`）
+
+| Agent | 何时使用 |
+|---|---|
+| **`audio-director`** | 音乐方向、音色调色、audio palette、Mixer 总体规划、风格冲突仲裁 |
+| `sound-designer` | SFX 设计文档、audio event 列表、混音 / mastering 笔记、声音参考收集 |
+
+**协作约定**（继承 L2 协议）：agent 写文件前主动询问 "May I write this to [filepath]?"。
+
+**与引擎子层协作**：audio-director / sound-designer 决定资产 + middleware 项目；引擎子层（如 06 unity）写 C# 集成代码（FMOD Studio Unity Integration / Wwise SDK / AudioMixer.SetFloat）。
+
+---
+
+## 4. Skills
+
+**本轮无 cherry-pick**。
+
+`audio-*` 自写候选（按需未来加，详见 `cc/docs/08-audio-rules.md §4.3`）：
+- `audio-naming-conventions` `audio-loudness-lufs` `audio-format-policy` `audio-mixer-routing` `audio-middleware-decision` `audio-middleware-fmod` `audio-adaptive-music` `audio-engine-import-settings`
+
+---
+
+## 5. 推荐外部插件（**不**由 cc/ 提供）
+
+按 03 §1，外部 plugin / connector 由消费方维护（`<project>/.mcp.json` 或 Claude Customize 面板）。本层推荐：
+
+| 工具 | 类型 | 适用场景 | 安装 |
+|---|---|---|---|
+| **Ableton 官方 connector** | 官方 | DAW 编排 / 音乐生产 / MIDI | Claude Customize 面板 |
+| [ahujasid/ableton-mcp](https://github.com/ahujasid/ableton-mcp) | 社区 MCP | Ableton 备选（开源版） | 见上游 README |
+| **Splice 官方 connector** | 官方 | 采样 / loop 库浏览 / 下载 | Claude Customize 面板 |
+| **[fmod-mcp](https://github.com/jmperez127/fmod-mcp)** ⭐ | 社区 MCP（**Claude Code 专用**） | FMOD Studio middleware 集成（35 工具：导入/事件/effect 链/sends-returns/parameters） | 多步骤，见下方 |
+
+**fmod-mcp 安装**（前置：FMOD Studio 2.02+ 已打开目标项目）：
+
+1. `git clone https://github.com/jmperez127/fmod-mcp.git && cd fmod-mcp`
+2. `python3 -m venv .venv && source .venv/bin/activate`（Windows: `.venv\Scripts\activate`）
+3. `pip install -e .`
+4. **在 fmod-mcp 目录内**执行：`claude mcp add fmod -s user -- "$(pwd)/.venv/bin/python" -m fmod_mcp`
+| Sound Effects Expert skill | 第三方 skill | ElevenLabs Sound Effects API + AudioCraft 生成 SFX | 见 [mcpmarket 页面](https://mcpmarket.com/tools/skills/sound-effects-expert)（兼容性按页面说明） |
+
+如本项目使用上述工具，请在 `<project>/.mcp.json` 注册或在 Customize 面板装。
+
+---
+
+## 6. 资源管理约定
+
+### 6.1 目录结构（建议）
+
+```
+<audio-subdir>/
+├── source/                 ← DAW 工程（.als / .flp / .ptx / FMOD .fspro）+ 母带 .wav
+│   ├── music/
+│   ├── sfx/
+│   ├── vo/
+│   └── ambient/
+├── exported/               ← game-ready（.wav / .ogg）
+│   ├── music/
+│   ├── sfx/
+│   ├── vo/
+│   └── ambient/
+├── audio-bible.md          ← audio 总体设计文档（如启用）
+└── changelog.md            ← 大资产变更记录
+```
+
+如使用 FMOD：FMOD 项目通常**独立于 game repo**，build 输出（`.bank`）才进 game repo（如 `<engine-subdir>/fmod_assets/banks/`）。
+
+### 6.2 命名规范（默认建议，按消费方惯例可改）
+
+默认采用 kebab-case，分类前缀：
+
+| 类型 | 前缀 | 示例 |
+|---|---|---|
+| SFX | `sfx-` | `sfx-ui-button-click.wav` |
+| BGM | `bgm-` | `bgm-village-day-loop.ogg` |
+| VO | `vo-` | `vo-hero-quest-accept-zh.wav` |
+| Ambient | `amb-` | `amb-forest-night.wav` |
+| Stinger | `stg-` | `stg-victory.wav` |
+| Footstep | `fs-` | `fs-grass-walk-1.wav` |
+
+**硬性要求（任何 case 风格都需遵守）**：
+- 不含中文（跨平台兼容）
+- 不含空格
+- 全项目一致（不混用 PascalCase 和 kebab-case）
+
+### 6.3 版本控制
+
+- **DAW 工程**（.als / .flp / .ptx）+ 母带 .wav（24/48 大文件）→ git LFS 或独立资产仓
+- **导出 game-ready** 文件（.ogg / 压缩 .wav）→ 进 git
+- **如使用 FMOD**：`.fspro` + `Metadata/` 进 git（**不**进 LFS，是 XML/文本）；`Assets/`（音频源）入 LFS；`Build/*.bank` 进 game repo（不进 audio repo）
+- **如使用 Wwise**：项目文件按 Wwise 官方 git workflow 处理（`Originals/` 入 LFS，`GeneratedSoundBanks/` 进 game repo）
+- **如使用 Unity 内置**：所有音频资产直接进 Unity `Assets/Audio/`，按 6.1 子目录组织
+
+---
+
+## 7. 响度与格式标准
+
+### 7.1 响度（LUFS）默认目标
+
+按平台与场景：
+
+| 场景 | 目标 LUFS | True Peak |
+|---|---|---|
+| 游戏（桌面 / 主机） | **-23 LUFS**（EBU R128） | -1 dBTP |
+| 移动游戏 | -18 LUFS（响度更高，环境噪声补偿） | -1 dBTP |
+| 流媒体 / Trailer | -16 LUFS（YouTube / Spotify 标准） | -1 dBTP |
+| 主机 audio mastering | 项目特定（参考各平台 cert 文档） | -3 dBTP（保守） |
+
+实际项目如有 audio bible，以其为准。
+
+### 7.2 文件格式选择
+
+| 用途 | 格式 | 理由 |
+|---|---|---|
+| 短 SFX（< 1s） | `.wav` 16-bit 44.1kHz | 引擎运行时直接解压；性能最优 |
+| 长 SFX / BGM / VO | `.ogg` Vorbis Q8 | 文件小；移动端友好 |
+| 高保真 / mastering | `.wav` 24-bit 48kHz | 工程文件级 |
+| 不用 | `.mp3` | 大多数引擎不直推；专利问题 |
+
+### 7.3 引擎 import 参数（与 06 unity 协作）
+
+实际 import settings 在引擎层（Unity Audio Settings）配置；本层只决定**应该是什么值**：
+- 短 SFX：Decompress on Load + Force to Mono（如适用）
+- 长 BGM：Streaming
+- 一次性事件 SFX：Compressed in Memory + Vorbis Q70
+
+---
+
+## 8. 与引擎子层协作的具体边界（以 Unity 为例）
+
+L3 audio 与 L3 引擎子层（如 06 unity）同级，分工。下表实现栏以 Unity 为例；Godot / Unreal 类比：
+
+| 维度 | L3 audio（本层） | 引擎子层（Unity 例） |
+|---|---|---|
+| **运行时 API** | 不管 | 引擎 audio API（如 Unity AudioSource / AudioListener） |
+| **AudioMixer 路由设计** | 设计 group / snapshot 命名约定 | 实现（如 Unity AudioMixer.SetFloat / Snapshot.TransitionTo） |
+| **响度归一化** | 决定 LUFS 目标、文件级响度 | 引擎运行时音量曲线 |
+| **资产 import** | 决定文件格式 / 采样率 | 配置引擎 import settings（按引擎不同） |
+| **Middleware 集成** | 决定事件命名约定、bank 拆分 | 写 SDK C# 调用（如 FMOD Studio Unity Integration） |
+| **VO** | 录音规格、loudness、命名 | 引擎播放 / dialogue system 实现 |
+
+**工作流**：audio 决定资产规格 + middleware 项目 → 引擎子层集成代码。
+
+---
+
+## 9. 与 07 art 协作的具体边界
+
+| 场景 | 主导层 | 协作内容 |
+|---|---|---|
+| Trailer 视觉 | 07 art | audio 提配乐 / 音效 |
+| Trailer 配音 | **08 audio** | art 提字幕样式 |
+| UI 反馈音 | 08 audio | art 提视觉反馈样式 |
+| Particle 配音（VFX） | 08 audio | art 提 VFX 时间表 |
+| BGM 风格基调 | 08 audio | art-bible 注音乐风格描述 |
+
+**默认归属**：以听觉为主归 audio；视觉为主归 art。混合时双方各自负责自己的层。
+
+---
+
+## 10. 修订
+
+- 改本文件 = 改 `cc/audio/CLAUDE.md.template` → install 同步
+- 添加 / 删除 audio-* skill：同步 `cc/audio/MANIFEST.md`
+- 升级 Donchitos：按 `03-hierarchy-design.md §7` 流程
+- 升级响度 / 格式标准：跟随平台 cert 文档变化

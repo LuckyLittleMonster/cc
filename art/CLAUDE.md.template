@@ -1,0 +1,162 @@
+# CLAUDE.md · 美术子层（L3 · `<project>/<art-subdir>/`）
+
+> **L3 模板**：美术子层 CLAUDE.md。**消费方需填充** `[占位符]`。
+> 加载条件：Claude 编辑本子树文件时叠加，叠在 L1 (`~/.claude/`) + L2 (`<project>/CLAUDE.md`) 之上。
+> 修订路径：改 `cc/art/CLAUDE.md.template` → install 时 cp 到 `<project>/<art-subdir>/CLAUDE.md`。
+> 上游层级合约：`cc/docs/03-hierarchy-design.md`；本层设计文档：`cc/docs/07-art-rules.md`。
+
+---
+
+## 1. 美术子层身份
+
+- **美术维度**：`[2D pixel / 2D 矢量 / 2D 手绘 / 3D 卡通 / 3D 写实 / 混合]`
+- **主调色板**：`[NES / Game Boy / PICO-8 / DawnBringer / 自定义 / ...]`
+- **核心 DCC 工具**：`[Aseprite / Blender / Photoshop / Substance / Krita / ...]`
+- **目标分辨率**：`[480p / 720p / 1080p / 4K / 多分辨率]`
+- **Pixel-perfect**：`[是 / 否]`（影响 sprite 尺寸约束）
+- **风格基调（一句话）**：`[填一句话定调，详细见 art bible]`
+
+> 这 6 项决定调用哪些外部插件、reference docs 重点章节、规格。**填实后保留**。
+
+---
+
+## 2. 在层级中的位置
+
+```
+~/.claude/CLAUDE.md                       L1 · 跨项目工程姿态（自动加载）
+<project>/CLAUDE.md                       L2 · 游戏综合（叠加）
+<project>/<engine-subdir>/CLAUDE.md       L3 · 引擎子层（如 unity，编辑代码时叠加）
+<project>/<art-subdir>/CLAUDE.md          ← 本文件 · L3 art（编辑美术资源时叠加）
+<project>/<audio-subdir>/CLAUDE.md        L3 · audio（同级）
+```
+
+**与引擎子层的边界**：本层管视觉决策与资产工作流；shader / UI / 引擎 API **代码**归引擎子层（典型如 06 unity）。详见 `cc/docs/07-art-rules.md §6`。
+
+---
+
+## 3. Donchitos Art Agents（2 个，`.claude/agents/`）
+
+| Agent | 何时使用 |
+|---|---|
+| **`art-director`** | 视觉方向、style guide 起草、art bible 审议、风格冲突仲裁 |
+| `technical-artist` | shader 实现协作、VFX 调优、艺术管线工具、性能预算 |
+
+**协作约定**（继承 L2 协议）：agent 写文件前主动询问 "May I write this to [filepath]?"。
+
+**与引擎子层协作**：技术美术调用引擎专家做 shader 代码实现（Unity 项目里的 `unity-shader-specialist`，在 06 unity；其他引擎类比）。art-director 决定视觉，引擎专家实现。
+
+---
+
+## 4. Skills（4 dirs，`.claude/skills/`）
+
+### 4.1 来自 Donchitos（3）
+
+| Skill | 用途 | 何时触发 |
+|---|---|---|
+| **`/art-bible`** | 引导式 art bible 撰写（视觉风格规范文档） | `/brainstorm` 完成后；项目初期 ※ |
+| `/asset-spec` | 资源规格定义（命名 / 格式 / 维度 / 质量） | art-bible 后；资源生产前 ※ |
+| `/asset-audit` | 现有资源对照规格的合规校验 | 资源生产中 / 后；release 前 |
+
+> **※ Donchitos skill 前置**：
+> - L2 已部署，`/brainstorm` skill 可用（`/art-bible` 依赖 L2）
+> - Donchitos 目录约定已就位：`design/art/`（art bible 输出位置）+ `production/review-mode.txt`（审查模式标记）
+> - 如未就位，skill 会因找不到文件而失败；建议消费者首次部署后用 `/start` 触发目录骨架生成
+
+### 4.2 来自 game-art-skill（1，含 9 reference docs）
+
+| Skill | 用途 |
+|---|---|
+| **`game-art-polish`** ⭐ | 把 "programmer art" 升级到 "polished art" 的方法论 |
+
+**核心理念**（出自 SKILL.md，不复述全文）：
+1. Consistency beats quality — 一致性 > 单点高质量
+2. Contrast is readability — 对比度决定可读性
+3. Shape language carries meaning — 形状语言传递语义
+4. Limit the palette hard — 严格限制调色板
+5. Juice is cheapest leverage — juice 是最便宜的杠杆
+
+**Reference docs**（在 `skills/game-art-polish/`，覆盖 Unity + Godot 双引擎；按本项目实际引擎走对应路径）：
+- `foundations.md` `juice-and-feel.md` `particles-vfx.md` `pixel-art.md` `post-processing.md` `shaders.md` `stylized-3d.md` `ui-toolkit.md` `creators-and-resources.md`
+
+### 4.3 自写候选（按需未来加）
+
+`art-naming-conventions` `art-color-palette-define` `art-import-settings` `art-tileset-pipeline` `art-sprite-sheet-spec` `art-material-conventions` `art-mood-board-builder` —— 详见 `cc/docs/07-art-rules.md §4.3`。
+
+---
+
+## 5. 推荐外部插件（**不**由 cc/ 提供）
+
+按 03 §1，外部 plugin / connector 由消费方自维护（`<project>/.mcp.json` 或 Claude Customize 面板）。本层**推荐**这些工具：
+
+| 工具 | 适用场景 | 安装 |
+|---|---|---|
+| **[pixel-plugin](https://github.com/willibrandon/pixel-plugin)** | 像素美术 / Aseprite 自动化 | `/plugin marketplace add https://github.com/willibrandon/pixel-plugin` |
+| **[blender-mcp](https://github.com/ahujasid/blender-mcp)** | 3D 建模 / 材质 / 动画 / 渲染 | Blender plugin + `claude mcp add blender-mcp ...`（看上游 README） |
+| **Adobe for Creativity Connector** | Photoshop / Illustrator / Firefly / Premiere / Lightroom / InDesign / Stock / Express（50+ 工具） | Claude Customize 面板装（官方） |
+| Hyper3D Rodin（按需） | image → 3D model AI 生成 | MCP server |
+
+如本项目使用上述工具，请在 `<project>/.mcp.json` 注册或在 Customize 面板装。
+
+---
+
+## 6. 资源管理约定
+
+### 6.1 目录结构（建议）
+
+```
+<art-subdir>/
+├── source/                 ← 工程文件（PSD / .blend / .ase），git LFS 或独立大对象存储
+│   ├── characters/
+│   ├── environment/
+│   ├── ui/
+│   └── effects/
+├── exported/               ← 导出后的 game-ready 格式（PNG / FBX / GLB）
+│   ├── sprites/
+│   ├── models/
+│   └── textures/
+├── art-bible.md            ← /art-bible skill 输出
+├── asset-spec.md           ← /asset-spec skill 输出
+└── changelog.md            ← 大资产变更记录
+```
+
+### 6.2 命名规范（默认建议，按消费方惯例可改）
+
+默认采用 kebab-case；Unity / Godot / Unreal 社区也常见 PascalCase（`HeroIdle.png`）或 snake_case（`hero_idle.png`），按团队既有约定调整即可。
+
+**默认值（kebab-case 示例）**：
+- 文件名：`hero-idle.png`
+- 类型前缀：`spr-` (sprite) / `tex-` (texture) / `mdl-` (model) / `mat-` (material) / `vfx-` (vfx)
+- 状态后缀：`-idle` `-walk-N` `-jump`（数字按帧编号）
+
+**硬性要求（任何 case 风格都需遵守）**：
+- 不含中文（跨平台兼容）
+- 不含空格
+- 全项目一致（不混用 PascalCase 和 kebab-case）
+
+### 6.3 版本控制
+
+- 工程文件（PSD / .blend / .ase）：git LFS 或独立资产仓
+- 导出文件（PNG / FBX / GLB）：进 git
+- Excel：不进 git（用 CSV 替代或导出 CSV 后入仓）
+
+---
+
+## 7. 与引擎子层协作的具体边界（以 Unity 为例）
+
+| 我做什么（L3 art） | 引擎子层做什么（Unity 例） |
+|---|---|
+| 决定 shader 视觉风格（toon / cel / outline / dissolve） | 实现 shader 代码（如 ShaderLab / HLSL；Godot 类比） |
+| 写 art bible 规定 UI 视觉规范（配色 / 字体 / 间距） | 实现 UI 代码（如 UXML / USS / UGUI；Godot Theme 类比） |
+| 设计 VFX 形状 / 颜色 / 密度 | 实现 VFX 代码（如 VFX Graph / Particle System） |
+| 决定材质参数美学（粗糙度 / 金属度） | 写 Material 代码 / Shader Graph 节点 |
+| 资源命名 / 路径规范 | 配置引擎 import settings |
+
+**协作流**：art 决定 → 引擎子层实现 → art 验收（`/asset-audit`）。
+
+---
+
+## 8. 修订
+
+- 改本文件 = 改 `cc/art/CLAUDE.md.template` → install 同步
+- 添加 / 删除 art-* skill：同步 `cc/art/MANIFEST.md`
+- 升级 Donchitos / game-art-skill：按 `03-hierarchy-design.md §7` 流程

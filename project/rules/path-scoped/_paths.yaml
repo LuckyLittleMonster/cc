@@ -1,0 +1,51 @@
+# cc/project/rules/path-scoped/_paths.yaml
+# Path-scoped rule auto-trigger configuration (per 09 §6.2).
+# Read by post-edit hook → match file_path → emit reminder to load corresponding rule.
+#
+# Status: stub for v3 hook implementation. Currently rules are referenced by convention only.
+
+rules:
+  - rule: gameplay-code.md
+    paths:
+      - "src/gameplay/**"
+      - "**/Gameplay/**"
+      - "**/gameplay/**"
+
+  - rule: data-files.md
+    paths:
+      - "data/**"
+      - "**/*.csv"
+      - "**/*.yaml"
+      - "**/*.yml"
+      - "**/*.json"
+
+  - rule: design-docs.md
+    paths:
+      - "design/**"
+
+  - rule: test-standards.md
+    paths:
+      - "tests/**"
+      - "**/*_test.py"
+      - "**/*_test.cs"
+      - "**/*.test.cs"
+      - "**/*.spec.py"
+
+  - rule: prototype-code.md
+    paths:
+      - "prototypes/**"
+      - "prototype/**"
+
+  - rule: ai-code.md
+    paths:
+      - "**/AI/**"
+      - "**/ai/**"
+      - "**/Behavior/**"
+      - "**/behavior_trees/**"
+
+  - rule: narrative.md
+    paths:
+      - "narrative/**"
+      - "dialogue/**"
+      - "**/narrative/**"
+      - "**/*.dialogue"
