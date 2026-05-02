@@ -62,18 +62,21 @@ Hooks runtime + shared utilities.
 
 | Target | Source (ECC) | Files |
 |---|---|---|
+| `scripts/*.js` | `scripts/*.js`（顶层 23 个） | 23 |
 | `scripts/hooks/` | `scripts/hooks/` | 43 |
 | `scripts/lib/` | `scripts/lib/` | 31 |
 
 > Required by `hooks/hooks.json` (which references `scripts/hooks/plugin-hook-bootstrap.js`, `scripts/hooks/run-with-flags.js`, `scripts/lib/utils.js`, etc.).
+>
+> 顶层 `scripts/*.js` 是 ECC 各 skill 的实现脚本（如 `skills-health.js` 给 `/skill-health` 用，`harness-audit.js` 给 `/harness-audit` 用）。本批次缺失曾导致 `/skill-health` ENOENT，2026-05-02 修复。
 
 ---
 
 ## Totals
 
-- Files: **246**
+- Files: **269**（246 → 269；2026-05-02 加 23 个 ECC 顶层 scripts）
 - Top-level dirs: 7 (rules, hooks, contexts, agents, skills, commands, scripts)
-- 245 files unmodified from upstream (`adapted: no`)
+- 268 files unmodified from upstream (`adapted: no`)
 - 1 file rewritten: `CLAUDE.md` (`adapted: yes`) — see `cc/docs/04-general-rules.md` §3 for change rationale
 
 ## Sync workflow (future)
