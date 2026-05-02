@@ -177,11 +177,12 @@ pinned_at: 2026-05-01
 
 - **2026-05-01**：00–09 全部 v1 完成；03/04/05/06/07/08 各自经过 self-review v1.1 修订
 - **规则层（04–08）+ 部署设计（09）已就位**：5 层（user/project/unity/art/audio）真实文件总数 372，docs/ 总行数 3027
+- **2026-05-01（晚）：install v1 + v2 实现** —— `install.sh` + `install.ps1` + `scripts/install/install.js`（740 行 Node.js），支持自动检测、--check、--dry-run、占位符填充、scaffold 等。详见 `scripts/install/README.md`
 - **cherry-pick 总览**：
   - ECC：覆盖 user / project / unity 的 baseline（rules/common、Python 工具链、C# baseline 等）
   - Donchitos：游戏角色 agents（21 in L2 + 5 in L3 unity + 2 in L3 art + 2 in L3 audio）+ game-dev skills（26 in L2）+ path-scoped rules（7 in L2 + 4 in L3 unity）
   - game-art-skill：1 个综合 polish skill 含 9 reference docs
-- **下一步选项**：(a) 实现 install v1（09 spec → 真实代码）；(b) dogfood `修行计划/中国象棋/`；(c) 开始具体 dogfood 后产生 `gamedev-*` `unity-*` `art-*` `audio-*` 自写 skill；(d) 仓库根 README.md 已建（公开门面）
+- **下一步选项**：(a) ~~install v1 实现~~ ✅ 已完成（v1+v2）；(b) dogfood 真实游戏项目；(c) 写 `gamedev-*` `unity-*` `art-*` `audio-*` 自写 skill；(d) install v3（path-scoped hook + `--uninstall`）
 
 ---
 

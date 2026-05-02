@@ -390,27 +390,28 @@ node "$PSScriptRoot/scripts/install.js" $args
 
 按价值与依赖排：
 
-### v1（最小可用）
-- `install --layer user` 与 `install --layer project --target <path>`
-- 占位符填充（交互模式）
-- `--dry-run`
-- 基础幂等（cp 覆盖）
-- Donchitos 目录 scaffolding（§5）
-- 跨平台壳（§10.2）
+### v1（最小可用）✅ 已实现
+- ✅ `install --layers user` 与 `install <target> --layers project`
+- ✅ 占位符填充（交互模式 + --no-fill）
+- ✅ `--dry-run` + `--check`
+- ✅ 基础幂等（默认跳过已存在；--force 覆盖）
+- ✅ Donchitos 目录 scaffolding（§5）
+- ✅ 跨平台壳（install.sh + install.ps1 + install.js）
 
-### v2（提升）
-- `install --preset game-unity` 一键装齐
-- L3 unity / art / audio 部署
-- `--upgrade` 与基本 MANIFEST 同步
-- agent-memory/ 父目录创建（§7）
-- `validate-assets.js` 与 `validate-skill-change.js` 重写（§8）
+### v2（提升）✅ 已实现
+- ✅ 自动检测模式（一键 `cc-install <target>` 装齐 user+project+unity+art+audio）
+- ✅ L3 unity / art / audio 部署（按 Unity vs 非 Unity 目标自动选路径）
+- ✅ install state 追踪（`cc-install-state.json`）
+- ⏳ `validate-assets.js` 与 `validate-skill-change.js` 重写（§8）— 留 v3
+- ⏳ agent-memory/ 父目录创建 — 已在 scaffold 中
 
-### v3（成熟）
-- Path-scoped rules 自动触发 hook（§6）
-- `--upgrade` 三方 merge（pre-adapt SHA，§9）
+### v3（成熟）⏳ 待办
+- Path-scoped rules 自动触发 hook（§6）— 依赖 `_paths.yaml` 已就位但 hook 未写
+- `--upgrade` 三方 merge（pre-adapt SHA，§9）— v1 已有 `--upgrade` flag 但仅做基本跳过
 - `--uninstall`
 - 配置文件模式（cc-install.yaml）
 - `--navigation-only` 多子项目支持
+- `validate-assets.js` 与 `validate-skill-change.js` Node.js 实现
 
 ### v4+（远期）
 - Plugin marketplace 分发
@@ -457,6 +458,7 @@ install 把文件放对位置即可被 Claude Code 自动发现。
 
 ## 14. 状态
 
-- 2026-05-01：本文 v1 设计文档完成，**实现 split** 为后续任务。
-- 规则层文档（00–08）已全部 v1.1 就位 + 09 v1 完成 → docs/ 阶段收尾。
-- 下一步：(a) 实际实现 install v1；(b) dogfood `修行计划/中国象棋/`；(c) 写 README.md（仓库门面）。
+- 2026-05-01：本文 v1 设计文档完成。
+- 2026-05-01（晚）：**install v1 + v2 实现完成** —— `install.sh` / `install.ps1` / `scripts/install/install.js` 落地，740 行 Node.js 实现。详见 `scripts/install/README.md`。
+- 规则层文档（00–08）+ 09 设计 + install 实现：cc/ 阶段全部收尾。
+- 下一步：(a) v3（path-scoped hook + `--upgrade` 三方 merge + `--uninstall`）；(b) dogfood 真实 Unity 项目；(c) ECC `validate-assets.sh` 等 Node.js 重写。

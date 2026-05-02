@@ -57,7 +57,8 @@ cc/
 ├── art/                  ← L3 → <project>/<art-subdir>/.claude/     (17 files)
 ├── audio/                ← L3 → <project>/<audio-subdir>/.claude/   (4 files)
 │
-└── install.{sh,ps1}      ← 部署器（设计 spec 完成；实现 split 为后续工作）
+├── install.sh / install.ps1  ← 一键部署器（v1+v2 已实现，跨平台）
+└── scripts/install/         ← install.js（740 行 Node.js）+ README.md
 ```
 
 ---
@@ -76,12 +77,34 @@ cc/
 | 04–08 | 各层规则 | 按需 |
 | 09 | [install 设计](docs/09-install-design.md) | 部署时读 |
 
-### 2. 装到 ~/.claude/（手动，install v1 待实现）
+### 2. 一键部署（推荐）
 
-在 install.{sh,ps1} 实现前，手动 cp：
+需要 Node.js ≥ 18。
 
 ```bash
-# L1 用户级（跨项目）
+# 检查当前状态
+./install.sh --check
+
+# 第一次：装 L1 到 ~/.claude/
+./install.sh --layers user
+
+# 单一 Unity 游戏：自动检测一键装齐 user+project+unity+art+audio
+./install.sh /path/to/my-unity-game
+
+# 多子项目工作区：每个游戏独立部署
+./install.sh /workspace/game-A
+./install.sh /workspace/game-B
+
+# 演练（不写文件）
+./install.sh /path/to/game --dry-run
+```
+
+详细见 [scripts/install/README.md](scripts/install/README.md)。Windows 用 `.\install.ps1`。
+
+### 2.5 手动 cp（fallback）
+
+```bash
+# L1 用户级
 cp -r cc/user/* ~/.claude/
 
 # L2 单游戏项目
@@ -120,7 +143,7 @@ cp -r cc/unity/{agents,skills,rules,docs} <your-game>/Assets/Scripts/.claude/
 
 - 📚 **设计文档**：00–09 全部 v1 完成（含 v1.1 self-review 修订）
 - 📦 **Cherry-pick**：5 层全部就位，372 个文件
-- 🛠️ **install 实现**：v1 待 split（设计 spec 完成于 09）
+- 🛠️ **install 实现**：v1 + v2 完成（自动检测 / --check / --dry-run / 占位符填充 / scaffold）；v3（path-scoped hook + `--uninstall`）待办
 - 🧪 **Dogfood**：等待真实游戏项目消费
 
 ---
