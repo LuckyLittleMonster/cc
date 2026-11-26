@@ -14,11 +14,18 @@
 
 ## 1. 部署（每台机器）
 
-`cc` 仓库合并后照常跑一次 user 层安装，脚本会到 `~/.claude/scripts/agentbus/`，skill 会到 `~/.claude/skills/agentbus/`：
+拉取 `cc` 仓库后跑一次 user 层安装，脚本会到 `~/.claude/scripts/agentbus/`，skill 会到 `~/.claude/skills/agentbus/`：
 
 ```powershell
-cd ~/git/cc; git pull; .\install.ps1 --layers user     # macOS / Linux: ./install.sh --layers user
+cd ~/git/cc; git pull
+'y' | node scripts/install/install.js --layers user    # Bash: echo y | node scripts/install/install.js --layers user
 ```
+
+安装器会问「继续部署？(y/N)」。agent 的 shell 没有交互输入，问了读不到就当 N 静默退出，`install.ps1` 外壳也不会把管道转给 node，所以直接对 node 喂 `y`。你自己在终端里装可以照常 `.\install.ps1 --layers user` 再按 y。
+
+安装器默认跳过已存在的文件。以后 agentbus 有更新时，已部署过的文件不会被覆盖，要用新版就把 `user/scripts/agentbus/` 和 `user/skills/agentbus/` 拷到 `~/.claude/` 下对应位置（`--force` 会覆盖整个 user 层，慎用）。
+
+装完 `Test-Path "$HOME/.claude/scripts/agentbus/agentbus.js"` 应为 True。
 
 下文的 `ab` 都代表：
 

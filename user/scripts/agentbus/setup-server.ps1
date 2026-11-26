@@ -104,5 +104,6 @@ Write-Host "  LAN addresses : $($ips -join ', ')  (port $Port, TCP + UDP)"
 Write-Host "  log           : $Log"
 Write-Host "  token         : $token"
 Write-Host ''
-Write-Host 'On every other machine, have its agent run (after installing cc user layer):'
+Write-Host 'On every other machine, have its agent run:'
+Write-Host "  cd ~/git/cc; git pull; 'y' | node scripts/install/install.js --layers user"
 Write-Host "  & `"`$HOME/.claude/scripts/agentbus/setup-client.ps1`" -Token $token"
