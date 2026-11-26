@@ -8,10 +8,11 @@ const crypto = require('node:crypto');
 const { parseArgs } = require('node:util');
 const { Client } = require('./client');
 const { startServer, NAME_RE } = require('./server');
+const { discover } = require('./discovery');
+const { DEFAULT_PORT, configPath, writeConfig, settings } = require('./config');
 
-const CONFIG_FILE = path.join(os.homedir(), '.agentbus.json');
-const DEFAULT_PORT = 7788;
 const FOLLOW_WAIT_SEC = 50;
+const RETRY_MS = 5000;
 
 const USAGE = `agentbus - message bus for agents on several machines
 
@@ -21,35 +22,19 @@ const USAGE = `agentbus - message bus for agents on several machines
   agents                              who is on the bus, last seen, unread
   log [-n N]                          last N messages on the bus
   whoami
-  init --url URL --token TOKEN [--name NAME]   write ~/.agentbus.json
+  discover [--token T] [--port ${DEFAULT_PORT}] [--wait SEC]   find the bus on the LAN, save it
+  init --url URL --token TOKEN [--name NAME]   write the config by hand
   serve [--host 0.0.0.0] [--port ${DEFAULT_PORT}] [--data DIR]
   token                               print a fresh random token
 
-Global: --as NAME overrides this agent's name.
-Env: AGENTBUS_URL AGENTBUS_TOKEN AGENTBUS_NAME override ~/.agentbus.json.`;
+Global: --as NAME (this agent's name), --config FILE (default ~/.agentbus.json), --log FILE (append output).
+Env: AGENTBUS_URL AGENTBUS_TOKEN AGENTBUS_NAME AGENTBUS_CONFIG.
+A client that cannot reach its saved URL re-discovers the bus once and retries.`;
 
-function readConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) return {};
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-  } catch (err) {
-    throw new Error(`cannot parse ${CONFIG_FILE}: ${err.message}`);
-  }
-}
+const NOT_FOUND = (port) => `no bus answered on UDP ${port}. Check: the server is running (setup-server.ps1), `
+  + `both machines are on the same subnet, the server firewall allows UDP ${port}, and the token matches.`;
 
-function defaultName() {
-  const raw = `${os.hostname()}/${path.basename(process.cwd())}`.toLowerCase();
-  return raw.replace(/[^a-z0-9._:/-]/g, '-').slice(0, 64);
-}
-
-function settings(flags) {
-  const file = readConfig();
-  return {
-    url: process.env.AGENTBUS_URL || file.url || `http://127.0.0.1:${DEFAULT_PORT}`,
-    token: process.env.AGENTBUS_TOKEN || file.token || '',
-    name: flags.as || process.env.AGENTBUS_NAME || file.name || defaultName(),
-  };
-}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function stamp(iso) {
   const d = new Date(iso);
@@ -66,8 +51,14 @@ function printMessages(messages) {
   console.log(messages.length ? messages.map(formatMessage).join('\n') : '(empty)');
 }
 
-function readStdin() {
-  return fs.readFileSync(0, 'utf8').trim();
+// Scheduled tasks have no console; append synchronously so the last error survives process.exit.
+function redirectOutput(file) {
+  const write = (chunk) => {
+    fs.appendFileSync(file, chunk);
+    return true;
+  };
+  process.stdout.write = write;
+  process.stderr.write = write;
 }
 
 function lanAddresses() {
@@ -83,7 +74,8 @@ async function serve(flags, cfg) {
   const dataDir = flags.data || path.join(os.homedir(), '.agentbus-data');
   const srv = await startServer({ host, port, token: cfg.token, dataDir });
   const where = host === '0.0.0.0' ? lanAddresses().map((ip) => `http://${ip}:${srv.port}`) : [`http://${host}:${srv.port}`];
-  console.log(`agentbus serving on ${where.join(' , ')}  (data: ${dataDir})`);
+  const disc = srv.discoveryPort ? `discovery on UDP ${srv.discoveryPort}` : 'discovery off (no token)';
+  console.log(`${new Date().toISOString()} agentbus serving on ${where.join(' , ')}; ${disc}; data ${dataDir}`);
   const stop = async () => {
     await srv.close();
     process.exit(0);
@@ -92,15 +84,77 @@ async function serve(flags, cfg) {
   process.on('SIGTERM', stop);
 }
 
-async function follow(client) {
+async function findBus(token, port, waitSec) {
+  const deadline = Date.now() + waitSec * 1000;
+  for (;;) {
+    const url = await discover({ token, port });
+    if (url || Date.now() >= deadline) return url;
+    await sleep(RETRY_MS);
+  }
+}
+
+async function discoverCommand(flags, cfg) {
+  if (!cfg.token) throw new Error('discover needs the bus token: --token TOKEN (ask the user for it)');
+  const port = Number(flags.port || DEFAULT_PORT);
+  const url = await findBus(cfg.token, port, Number(flags.wait || 0));
+  if (!url) throw new Error(NOT_FOUND(port));
+  const file = configPath(flags);
+  writeConfig(file, { url, token: cfg.token, ...(flags.name ? { name: flags.name } : {}) });
+  console.log(`${new Date().toISOString()} found bus at ${url}; saved to ${file}`);
+}
+
+// The server's discovery port defaults to its HTTP port, so the saved URL tells us where to ask.
+async function withRediscovery(flags, run) {
+  const cfg = settings(flags);
+  try {
+    return await run(new Client(cfg));
+  } catch (err) {
+    if (!err.message.startsWith('cannot reach') || !cfg.token || cfg.urlPinned) throw err;
+    const url = await discover({ token: cfg.token, port: Number(new URL(cfg.url).port) || DEFAULT_PORT });
+    if (!url || url === cfg.url) throw err;
+    writeConfig(configPath(flags), { url });
+    return run(new Client({ ...cfg, url }));
+  }
+}
+
+async function follow(flags) {
   for (;;) {
     try {
-      const messages = await client.inbox({ wait: FOLLOW_WAIT_SEC });
+      const messages = await withRediscovery(flags, (c) => c.inbox({ wait: FOLLOW_WAIT_SEC }));
       if (messages.length) console.log(messages.map(formatMessage).join('\n'));
     } catch (err) {
       console.error(`agentbus: ${err.message}; retrying in 10s`);
-      await new Promise((r) => setTimeout(r, 10_000));
+      await sleep(2 * RETRY_MS);
     }
+  }
+}
+
+async function clientCommand(cmd, rest, flags) {
+  switch (cmd) {
+    case 'send': {
+      const [to, ...words] = rest;
+      const text = words.length === 1 && words[0] === '-' ? fs.readFileSync(0, 'utf8').trim() : words.join(' ');
+      if (!to || !text) throw new Error('usage: send <to> <text...>');
+      const replyTo = flags.reply ? Number(flags.reply) : undefined;
+      const { id } = await withRediscovery(flags, (c) => c.send(to, text, { replyTo }));
+      return console.log(`sent #${id} -> ${to}`);
+    }
+    case 'inbox': {
+      const opts = { wait: Number(flags.wait || 0), peek: Boolean(flags.peek), limit: flags.limit ? Number(flags.limit) : undefined };
+      return printMessages(await withRediscovery(flags, (c) => c.inbox(opts)));
+    }
+    case 'follow':
+      return follow(flags);
+    case 'agents': {
+      const list = await withRediscovery(flags, (c) => c.agents());
+      return console.log(list.length
+        ? list.map((a) => `${a.name}  last ${stamp(a.last_seen)}  unread ${a.unread}`).join('\n')
+        : '(no agents yet)');
+    }
+    case 'log':
+      return printMessages(await withRediscovery(flags, (c) => c.log(Number(flags.n || 20))));
+    default:
+      throw new Error(`unknown command "${cmd}"\n\n${USAGE}`);
   }
 }
 
@@ -110,6 +164,8 @@ async function main(argv) {
     allowPositionals: true,
     options: {
       as: { type: 'string' },
+      config: { type: 'string' },
+      log: { type: 'string' },
       reply: { type: 'string' },
       wait: { type: 'string' },
       peek: { type: 'boolean' },
@@ -124,54 +180,27 @@ async function main(argv) {
       help: { type: 'boolean', short: 'h' },
     },
   });
+  if (flags.log) redirectOutput(flags.log);
   const [cmd, ...rest] = positionals;
   if (!cmd || flags.help) return console.log(USAGE);
 
   if (cmd === 'token') return console.log(crypto.randomBytes(24).toString('hex'));
   if (cmd === 'init') {
     if (!flags.url || !flags.token) throw new Error('init needs --url and --token');
-    const conf = { url: flags.url, token: flags.token, ...(flags.name ? { name: flags.name } : {}) };
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(conf, null, 2) + '\n', { mode: 0o600 });
-    return console.log(`wrote ${CONFIG_FILE}`);
+    const file = configPath(flags);
+    writeConfig(file, { url: flags.url, token: flags.token, ...(flags.name ? { name: flags.name } : {}) });
+    return console.log(`wrote ${file}`);
   }
 
   const cfg = settings(flags);
   if (!NAME_RE.test(cfg.name)) throw new Error(`invalid agent name "${cfg.name}"; pass --as NAME`);
   if (cmd === 'serve') return serve(flags, cfg);
-
-  const client = new Client(cfg);
-  switch (cmd) {
-    case 'whoami':
-      return console.log(`${cfg.name} @ ${cfg.url}`);
-    case 'send': {
-      const [to, ...words] = rest;
-      const text = words.length === 1 && words[0] === '-' ? readStdin() : words.join(' ');
-      if (!to || !text) throw new Error('usage: send <to> <text...>');
-      const { id } = await client.send(to, text, { replyTo: flags.reply ? Number(flags.reply) : undefined });
-      return console.log(`sent #${id} -> ${to}`);
-    }
-    case 'inbox':
-      return printMessages(await client.inbox({
-        wait: Number(flags.wait || 0),
-        peek: Boolean(flags.peek),
-        limit: flags.limit ? Number(flags.limit) : undefined,
-      }));
-    case 'follow':
-      return follow(client);
-    case 'agents': {
-      const list = await client.agents();
-      return console.log(list.length
-        ? list.map((a) => `${a.name}  last ${stamp(a.last_seen)}  unread ${a.unread}`).join('\n')
-        : '(no agents yet)');
-    }
-    case 'log':
-      return printMessages(await client.log(Number(flags.n || 20)));
-    default:
-      throw new Error(`unknown command "${cmd}"\n\n${USAGE}`);
-  }
+  if (cmd === 'discover') return discoverCommand(flags, cfg);
+  if (cmd === 'whoami') return console.log(`${cfg.name} @ ${cfg.url}`);
+  return clientCommand(cmd, rest, flags);
 }
 
 main(process.argv.slice(2)).catch((err) => {
-  console.error(`agentbus: ${err.message}`);
+  console.error(`${new Date().toISOString()} agentbus: ${err.message}`);
   process.exit(1);
 });

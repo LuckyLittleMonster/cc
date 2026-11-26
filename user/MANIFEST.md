@@ -56,7 +56,7 @@ Per `02-ecc-categorization.md` §3 ✅ list.
 
 `aside` · `auto-update` · `checkpoint` · `code-review` · `evolve` · `feature-dev` · `harness-audit` · `hookify` · `hookify-configure` · `hookify-help` · `hookify-list` · `instinct-export` · `instinct-import` · `instinct-status` · `learn` · `learn-eval` · `loop-start` · `loop-status` · `model-route` · `plan` · `projects` · `promote` · `prp-commit` · `prp-implement` · `prp-pr` · `prp-plan` · `prp-prd` · `prune` · `quality-gate` · `refactor-clean` · `resume-session` · `save-session` · `sessions` · `setup-pm` · `skill-create` · `skill-health` · `test-coverage` · `update-codemaps` · `update-docs`
 
-## scripts/ (80 files)
+## scripts/ (85 files)
 
 Hooks runtime + shared utilities.
 
@@ -65,7 +65,7 @@ Hooks runtime + shared utilities.
 | `scripts/*.js` | `scripts/*.js`（顶层 23 个） | 23 |
 | `scripts/hooks/` | `scripts/hooks/` | 43 |
 | `scripts/lib/` | `scripts/lib/` | 31 |
-| `scripts/agentbus/` | cc 自有（局域网多机 agent 消息总线，见其 README） | 6 |
+| `scripts/agentbus/` | cc 自有（局域网多机 agent 消息总线 + 服务端/客户端安装脚本，见其 README） | 11 |
 
 > Required by `hooks/hooks.json` (which references `scripts/hooks/plugin-hook-bootstrap.js`, `scripts/hooks/run-with-flags.js`, `scripts/lib/utils.js`, etc.).
 >
@@ -75,7 +75,7 @@ Hooks runtime + shared utilities.
 
 ## Totals
 
-- Files: **276**（246 → 269；2026-05-02 加 23 个 ECC 顶层 scripts；2026-11-25 加 cc 自有 agentbus 7 个）
+- Files: **281**（246 → 269；2026-05-02 加 23 个 ECC 顶层 scripts；2026-11-25 加 cc 自有 agentbus 12 个）
 - Top-level dirs: 7 (rules, hooks, contexts, agents, skills, commands, scripts)
 - 268 files unmodified from upstream (`adapted: no`)
 - 1 file rewritten: `CLAUDE.md` (`adapted: yes`) — see `cc/docs/04-general-rules.md` §3 for change rationale

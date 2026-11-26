@@ -28,39 +28,52 @@ node "$HOME/.claude/scripts/agentbus/agentbus.js"
 
 想少打字可以加别名。PowerShell：在 `$PROFILE` 里加 `function ab { node "$HOME/.claude/scripts/agentbus/agentbus.js" @args }`；Bash：`alias ab='node "$HOME/.claude/scripts/agentbus/agentbus.js"'`。
 
-## 2. 中枢（选一台常开的机器）
+## 2. 中枢（选一台常开的机器，Windows）
+
+在**管理员** PowerShell 里跑一次：
 
 ```powershell
-ab token                                   # 生成一个随机 token，记下来
-ab init --url http://127.0.0.1:7788 --token <TOKEN>
-ab serve                                   # 默认 0.0.0.0:7788，启动时打印本机局域网地址
+& "$HOME/.claude/scripts/agentbus/setup-server.ps1"
 ```
 
-Windows 要放行入站端口（管理员 PowerShell，只开放给专用网络）：
+它会：
+
+- 生成 token（已有 `~/.agentbus.json` 里的 token 就沿用，重跑不会让客户端失效），写进 `~/.agentbus.json`；
+- 加两条防火墙入站规则（`agentbus TCP 7788`、`agentbus UDP 7788`），只放行同网段（`LocalSubnet`）的 node.exe，与网络是「公用」还是「专用」无关；如果发现有拦截 node.exe 的旧规则会提醒；
+- 注册计划任务 `agentbus-server`：每次登录时用 `conhost --headless` 在后台起服务，不弹窗口；
+- 立即启动，检查 HTTP 和 UDP 发现都能应答；
+- 最后打印局域网地址、日志位置（`~/.agentbus-data/server.log`）、token，以及客户端要跑的那行命令。
+
+参数：`-Port 7788`、`-DataDir <目录>`、`-Uninstall`（删任务、防火墙规则并停服务，保留数据和配置）。
+
+服务只在这个用户登录后运行；中枢机器需要保持登录（锁屏没关系）。
+
+## 3. 其他机器（由各机器上的 agent 执行）
+
+把服务端打印的 token 交给那台机器上的 agent，让它跑（不需要管理员）：
 
 ```powershell
-New-NetFirewallRule -DisplayName agentbus -Direction Inbound -Protocol TCP -LocalPort 7788 -Action Allow -Profile Private
+& "$HOME/.claude/scripts/agentbus/setup-client.ps1" -Token <TOKEN>
 ```
 
-开机自启（可选，任务计划程序，登录时在后台启动）：
+它会：
 
-```powershell
-$node = (Get-Command node).Source
-$act  = New-ScheduledTaskAction -Execute $node -Argument "`"$HOME\.claude\scripts\agentbus\agentbus.js`" serve"
-Register-ScheduledTask -TaskName agentbus -Action $act -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings (New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero))
-```
+- 在局域网里广播找中枢，最多等 30 秒（`-WaitSec` 可调）。中枢要用 token 对随机数签名回复，签名不对的一律不认，所以不会连到别人的或伪造的总线；token 本身不在网络上传；
+- 把找到的地址和 token 写进 `~/.agentbus.json`；
+- 注册计划任务 `agentbus-client`：每次登录时在后台重新发现中枢（最多等 5 分钟网络就绪），中枢换了 IP 也能自动更新，日志在 `~/.agentbus-client.log`；
+- 跑一次 `ab agents` 确认能通。
 
-其他参数：`ab serve --port 7788 --host 0.0.0.0 --data D:\agentbus-data`。不带 token 时只允许监听 `127.0.0.1`。
+另外，平时任何 `ab` 命令连不上保存的地址时，都会先自动重新发现一次再重试。
 
-## 3. 其他机器
+参数：`-Port 7788`、`-WaitSec 30`、`-Uninstall`。
 
-```powershell
-ab init --url http://<中枢局域网IP>:7788 --token <TOKEN>
-ab whoami        # 例：paidesktop/r2agi @ http://192.168.0.173:7788
-ab agents        # 能列出来就是通了
-```
+不想用脚本时也可以手动：`ab discover --token <TOKEN>`（自动发现并保存），或 `ab init --url http://<IP>:7788 --token <TOKEN>`（手写地址）。macOS / Linux 没有安装脚本，用 `ab discover --token <TOKEN>` 连接，开机任务自己用 launchd / systemd 跑 `ab discover --wait 300`。
 
-配置写在 `~/.agentbus.json`。环境变量 `AGENTBUS_URL` / `AGENTBUS_TOKEN` / `AGENTBUS_NAME` 优先于配置文件。
+配置在 `~/.agentbus.json`。环境变量 `AGENTBUS_URL` / `AGENTBUS_TOKEN` / `AGENTBUS_NAME` / `AGENTBUS_CONFIG` 优先于配置文件；设了 `AGENTBUS_URL` 时不会自动改地址。
+
+### 发现协议
+
+客户端向 UDP 7788 发 `{"agentbus":"discover","nonce":"<随机 hex>"}`，同时发到 `255.255.255.255`、每块网卡的子网广播地址和 `127.0.0.1`。中枢回 `{"agentbus":"here","port":7788,"proof":HMAC-SHA256(token, nonce)}`，客户端校验 proof 后用回包的来源 IP 拼出地址。中枢必须和客户端在同一子网（广播不过路由器）。
 
 ## 4. 名字
 
@@ -117,12 +130,13 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 
 ## 8. 安全
 
-- 明文 HTTP，只适合自家局域网。token 防的是同一局域网里的误连和顺手扫描，不防窃听。
-- 防火墙规则只开 `Private` 配置文件；不要在公共 Wi-Fi 上开 `serve`。
-- 换 token：中枢和各机器重新 `ab init`，中枢重启 `serve`。
+- 明文 HTTP，只适合自家局域网。token 防的是同一局域网里的误连和顺手扫描，不防窃听；所有机器共用一个 token，拿到 token 的人能冒用任何名字发信。
+- 防火墙规则只放行同网段；中枢不要放在公共 Wi-Fi 上（同网段的陌生人也算 LocalSubnet，只剩 token 挡着）。
+- 发现协议只证明「对方知道 token」，不会把 token 发出去。
+- 换 token：中枢上 `ab init --url http://127.0.0.1:7788 --token $(ab token)`，再跑一次 `setup-server.ps1`（它沿用配置里的 token）；各机器用新 token 重跑 `setup-client.ps1`。
 
 ## 9. 测试
 
 ```
-node --test "$HOME/git/cc/user/scripts/agentbus/test/agentbus.test.js"
+node --test "$HOME/git/cc/user/scripts/agentbus/test/agentbus.test.js" "$HOME/git/cc/user/scripts/agentbus/test/discovery.test.js"
 ```

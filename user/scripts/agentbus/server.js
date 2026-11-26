@@ -3,6 +3,7 @@
 const http = require('node:http');
 const crypto = require('node:crypto');
 const { Store } = require('./store');
+const { startResponder } = require('./discovery');
 
 const NAME_RE = /^[A-Za-z0-9._:/-]{1,64}$/;
 const MAX_REQUEST_BYTES = 128 * 1024;
@@ -71,9 +72,9 @@ function send(res, status, payload) {
   res.end(text);
 }
 
-function startServer({ host = '0.0.0.0', port = 7788, token = '', dataDir }) {
+async function startServer({ host = '0.0.0.0', port = 7788, discoveryPort, token = '', dataDir }) {
   if (!token && !LOOPBACK.has(host)) {
-    return Promise.reject(new Error('a token is required when listening beyond loopback'));
+    throw new Error('a token is required when listening beyond loopback');
   }
   const store = new Store(dataDir);
   const waiters = new Set();
@@ -155,19 +156,36 @@ function startServer({ host = '0.0.0.0', port = 7788, token = '', dataDir }) {
     }
   });
 
-  return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => {
-      resolve({
-        port: server.address().port,
-        close: () => new Promise((done) => {
-          for (const w of [...waiters]) w.done();
-          server.closeAllConnections();
-          server.close(() => done());
-        }),
-      });
-    });
+  const closeHttp = () => new Promise((done) => {
+    for (const w of [...waiters]) w.done();
+    server.closeAllConnections();
+    server.close(() => done());
   });
+
+  const httpPort = await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(port, host, () => resolve(server.address().port));
+  });
+
+  // No token means loopback only, and there is nothing to prove to a LAN client.
+  let responder = null;
+  if (token) {
+    try {
+      responder = await startResponder({ host, port: discoveryPort ?? httpPort, token, httpPort });
+    } catch (err) {
+      await closeHttp();
+      throw new Error(`discovery port: ${err.message}`);
+    }
+  }
+
+  return {
+    port: httpPort,
+    discoveryPort: responder ? responder.port : null,
+    close: async () => {
+      await closeHttp();
+      if (responder) await responder.close();
+    },
+  };
 }
 
 module.exports = { startServer, NAME_RE };
