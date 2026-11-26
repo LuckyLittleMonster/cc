@@ -48,7 +48,7 @@
 
 ---
 
-## 4. Skills（34 个，`~/.claude/skills/`）
+## 4. Skills（35 个，`~/.claude/skills/`）
 
 按 description 自动触发。按主题速查：
 
@@ -61,6 +61,7 @@
 | 代码库导览 | `codebase-onboarding` `code-tour` `repo-scan` `documentation-lookup` `architecture-decision-records` |
 | 编码模式 | `coding-standards` `content-hash-cache-pattern` `regex-vs-llm-structured-text` `hexagonal-architecture` `gateguard` |
 | Git | `git-workflow` |
+| 多机协作 | `agentbus`（局域网 agent 消息总线，用法见 `~/.claude/scripts/agentbus/README.md`） |
 
 **默认触发**：编辑文件前若任务模糊 → `search-first`；会话长 → `strategic-compact`；调研型任务 → `iterative-retrieval`。
 
