@@ -12,6 +12,8 @@ class Store {
     this.file = path.join(dataDir, LOG_FILE);
     this.messages = [];
     this.agents = new Map();
+    // "<id>:<name>" — a broadcast taken by one worker must still reach everyone else.
+    this.taken = new Set();
     this.replay();
   }
 
@@ -36,6 +38,8 @@ class Store {
     } else if (ev.t === 'agent') {
       const { t, ...agent } = ev;
       this.agents.set(agent.name, agent);
+    } else if (ev.t === 'take') {
+      this.taken.add(`${ev.id}:${ev.name}`);
     }
   }
 
@@ -61,17 +65,23 @@ class Store {
     return created;
   }
 
-  addMessage({ from, to, body, reply_to }) {
+  addMessage({ from, to, body, reply_to, kind }) {
     const msg = {
       id: this.lastId + 1,
       ts: new Date().toISOString(),
       from,
       to,
+      kind: kind || (reply_to ? 'note' : 'task'),
       body,
       ...(reply_to ? { reply_to } : {}),
     };
     this.record({ t: 'msg', ...msg });
     return msg;
+  }
+
+  // Messages logged before kinds existed: a reply was never a task.
+  static withKind(msg) {
+    return msg.kind ? msg : { ...msg, kind: msg.reply_to ? 'note' : 'task' };
   }
 
   // Direct mail is delivered whenever the recipient shows up; broadcasts only from join time on.
@@ -86,11 +96,27 @@ class Store {
     const out = [];
     for (let i = agent.cursor; i < this.messages.length; i += 1) {
       const msg = this.messages[i];
-      if (!Store.isFor(msg, agent)) continue;
-      out.push(msg);
+      if (!Store.isFor(msg, agent) || this.taken.has(`${msg.id}:${name}`)) continue;
+      out.push(Store.withKind(msg));
       if (out.length >= limit) return { messages: out, cursor: msg.id };
     }
     return { messages: out, cursor: this.lastId };
+  }
+
+  // Claims unread tasks that nobody read within minAgeMs, without moving the reader's cursor.
+  take(name, minAgeMs, limit) {
+    const agent = this.agents.get(name);
+    if (!agent) return [];
+    const cutoff = Date.now() - minAgeMs;
+    const out = [];
+    for (let i = agent.cursor; i < this.messages.length && out.length < limit; i += 1) {
+      const msg = Store.withKind(this.messages[i]);
+      if (Date.parse(msg.ts) > cutoff) break;
+      if (msg.kind !== 'task' || !Store.isFor(msg, agent) || this.taken.has(`${msg.id}:${name}`)) continue;
+      this.record({ t: 'take', id: msg.id, name });
+      out.push(msg);
+    }
+    return out;
   }
 
   advance(name, cursor) {
@@ -100,7 +126,7 @@ class Store {
   }
 
   recent(n) {
-    return this.messages.slice(-n);
+    return this.messages.slice(-n).map(Store.withKind);
   }
 }
 

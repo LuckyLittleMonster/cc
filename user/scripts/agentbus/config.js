@@ -25,9 +25,14 @@ function writeConfig(file, patch) {
   return next;
 }
 
+// A session and the worker for the same dir must get the same name: the worker covers for the session.
+function nameForDir(dir, host = os.hostname()) {
+  const base = String(dir).split(/[\\/]/).filter(Boolean).pop() || 'root';
+  return `${host}/${base}`.toLowerCase().replace(/[^a-z0-9._:/-]/g, '-').slice(0, 64);
+}
+
 function defaultName() {
-  const raw = `${os.hostname()}/${path.basename(process.cwd())}`.toLowerCase();
-  return raw.replace(/[^a-z0-9._:/-]/g, '-').slice(0, 64);
+  return nameForDir(process.cwd());
 }
 
 function settings(flags) {
@@ -41,4 +46,4 @@ function settings(flags) {
   };
 }
 
-module.exports = { DEFAULT_PORT, configPath, readConfig, writeConfig, settings };
+module.exports = { DEFAULT_PORT, configPath, readConfig, writeConfig, settings, nameForDir };

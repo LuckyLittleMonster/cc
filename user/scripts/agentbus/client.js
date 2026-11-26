@@ -26,13 +26,18 @@ class Client {
     return payload;
   }
 
-  async send(to, body, { replyTo } = {}) {
+  async send(to, body, { replyTo, kind } = {}) {
     return this.call('POST', '/v1/send', {
       from: this.name,
       to,
       body,
       ...(replyTo ? { reply_to: replyTo } : {}),
+      ...(kind ? { kind } : {}),
     });
+  }
+
+  async take({ minAge = 0, limit = 1 } = {}) {
+    return (await this.call('POST', '/v1/take', { name: this.name, min_age: minAge, limit })).messages;
   }
 
   async inbox({ wait = 0, peek = false, limit } = {}) {

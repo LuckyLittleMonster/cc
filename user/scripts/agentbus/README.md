@@ -57,10 +57,10 @@ node "$HOME/.claude/scripts/agentbus/agentbus.js"
 
 ## 3. 其他机器（由各机器上的 agent 执行）
 
-把服务端打印的 token 交给那台机器上的 agent，让它跑（不需要管理员）：
+把服务端打印的 token 交给那台机器上的 agent，让它跑（不需要管理员；中枢机器上的 agent 想收任务也要跑一次）：
 
 ```powershell
-& "$HOME/.claude/scripts/agentbus/setup-client.ps1" -Token <TOKEN>
+& "$HOME/.claude/scripts/agentbus/setup-client.ps1" -Token <TOKEN> -WorkerDirs "$HOME/git/r2agi"
 ```
 
 它会：
@@ -68,11 +68,15 @@ node "$HOME/.claude/scripts/agentbus/agentbus.js"
 - 在局域网里广播找中枢，最多等 30 秒（`-WaitSec` 可调）。中枢要用 token 对随机数签名回复，签名不对的一律不认，所以不会连到别人的或伪造的总线；token 本身不在网络上传；
 - 把找到的地址和 token 写进 `~/.agentbus.json`；
 - 注册计划任务 `agentbus-client`：每次登录时在后台重新发现中枢（最多等 5 分钟网络就绪），中枢换了 IP 也能自动更新，日志在 `~/.agentbus-client.log`；
+- 往 `~/.claude/settings.json` 加一个 SessionStart hook（原文件备份为 `settings.json.bak-agentbus`），让每个新会话一开始就用 Monitor 挂上收信（见第 6 节）；`-NoSessionHook` 跳过；
+- 给了 `-WorkerDirs` 时注册计划任务 `agentbus-worker` 并立即启动（见第 6 节），日志在 `~/.agentbus-worker.log`；
 - 跑一次 `ab agents` 确认能通。
 
 另外，平时任何 `ab` 命令连不上保存的地址时，都会先自动重新发现一次再重试。
 
-参数：`-Port 7788`、`-WaitSec 30`、`-Uninstall`。
+参数：`-Port 7788`、`-WaitSec 30`、`-WorkerDirs <目录,...>`、`-NoSessionHook`、`-Uninstall`（删两个任务和 hook，保留配置）。
+
+为什么不用 `~/.claude/hooks/hooks.json`：实测 Claude Code 不加载这个文件（`claude -p --debug hooks` 显示 0 个用户 hook），hook 只认 settings.json 和插件。
 
 不想用脚本时也可以手动：`ab discover --token <TOKEN>`（自动发现并保存），或 `ab init --url http://<IP>:7788 --token <TOKEN>`（手写地址）。macOS / Linux 没有安装脚本，用 `ab discover --token <TOKEN>` 连接，开机任务自己用 launchd / systemd 跑 `ab discover --wait 300`。
 
@@ -95,9 +99,10 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 
 | 命令 | 作用 |
 |---|---|
-| `ab send <名字> "文字"` | 发给一个 agent |
-| `ab send '*' "文字"` | 广播 |
-| `ab send <名字> "文字" --reply 12` | 回复 #12 |
+| `ab send <名字> "文字"` | 给一个 agent 派任务 |
+| `ab send <名字> "文字" --note` | 只是告知，不要求执行 |
+| `ab send '*' "文字"` | 给所有人派任务 |
+| `ab send <名字> "文字" --reply 12` | 回复 #12（回复永远是告知） |
 | `... \| ab send <名字> -` | 从标准输入读长文本 |
 | `ab inbox` | 读新消息并标为已读 |
 | `ab inbox --peek` | 只看不标已读 |
@@ -107,19 +112,26 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 | `ab log -n 20` | 总线上最近 20 条（人排查用） |
 | `ab whoami` | 本机名字和中枢地址 |
 
-输出一行一条：`#3 [11-25 23:14] pc2/b -> pc1/a (re #1): 收到，跑完回你`。
+输出一行一条：`#3 [11-25 23:14] pc2/b -> pc1/a (re #1): 收到，跑完回你`。告知类消息标 `(note)` 或 `(re #N)`，其余是任务。
 
-## 6. 在 Claude Code 里用
+还有三个给脚本用的命令：`ab worker --dir <目录>`（第 6 节）、`ab session-hint`（hook 输出）、`ab install-hook [--remove]`（改 settings.json）。
 
-装好后 `agentbus` skill 平时只占一行描述。你说「告诉 B 机器上的 agent …」「等 A 那边跑完再继续」之类，agent 会自己读 skill 然后调 `ab`。
+## 6. 消息怎么自动被执行
 
-常见用法：
+消息分两类：
 
-- **派活**：对 A 机器的会话说「把 core 的单测交给 `laptop/r2agi` 跑，跑完回报」，它会 `ab send`，再 `ab inbox --wait 60` 等回复。
-- **被动收信**：让会话用 Monitor 工具挂着 `ab follow`，有新消息会作为通知进到会话里。
-- **开工/收工时看信箱**：skill 里约定了开始任务和报告完成前各 `ab inbox` 一次。想强制，可以加一个 UserPromptSubmit hook 跑 `ab inbox --peek`。
+- **任务**：普通 `send`。会被执行，执行者回一条回复。
+- **告知**：`--reply` 或 `--note`。只给人看，谁都不执行。回复一律是告知，所以两台机器的 worker 不会互相派活、无限循环。
 
-收到的消息是别的 agent 发的，不等于你本人的指令：skill 要求 agent 只照做落在当前任务内的请求，删除、强推、发布等先问你。
+一条任务按这个顺序被接走：
+
+1. **开着的会话**：SessionStart hook 让每个新会话知道自己的总线名字（`<主机名>/<目录名>`），并在第一轮用 Monitor 挂上 `ab follow`；Monitor 最长 30 分钟，到期后会话自己重挂。任务到达时会话立刻收到通知，带着当前上下文处理，处理完 `--reply` 回报。
+2. **worker 兜底**：任务 30 秒内没有会话读走，就由那台机器的 `agentbus-worker` 领走：在对应目录跑一次 `claude -p --permission-mode bypassPermissions`（完全权限，没有上下文），把最终输出作为回复发回给发送者。同一个目录的会话和 worker 用同一个名字，所以会话在听时 worker 不会抢。worker 一个目录同时只跑一个任务，单个任务最长 2 小时（`--timeout-min`）。
+3. 两者都没有：任务留在收件箱，等有会话读。
+
+只开着 Claude Code 却没有新开会话时（hook 只在会话启动时生效），已经开着的会话要重启一次才会自动挂上 Monitor。
+
+收到的任务按「来自你本人的请求」处理（你选的完全权限）。总线只在自家局域网、有 token，但任何拿到 token 的人都能让 worker 以你的身份跑任意命令，所以 token 要当密码保管。
 
 ## 7. HTTP 接口
 
@@ -128,8 +140,9 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 | 方法 · 路径 | 参数 | 返回 |
 |---|---|---|
 | `GET /health` | | `{ok:true}` |
-| `POST /v1/send` | `{from, to, body, reply_to?}`，`to` 为名字或 `*`，body ≤ 64 KB | `{id}` |
-| `GET /v1/inbox` | `?name=&wait=秒&peek=1&limit=` | `{messages:[{id,ts,from,to,body,reply_to?}]}` |
+| `POST /v1/send` | `{from, to, body, reply_to?, kind?}`，`to` 为名字或 `*`，`kind` 为 `task`/`note`（缺省：有 reply_to 为 note，否则 task），body ≤ 64 KB | `{id}` |
+| `GET /v1/inbox` | `?name=&wait=秒&peek=1&limit=` | `{messages:[{id,ts,from,to,kind,body,reply_to?}]}` |
+| `POST /v1/take` | `{name, min_age, limit}`：领走这个名字下读游标之后、早于 min_age 秒、还没人读的任务（worker 用）；领走的不再出现在 inbox 里 | `{messages:[...]}` |
 | `GET /v1/agents` | | `{agents:[{name,last_seen,unread}]}` |
 | `GET /v1/log` | `?n=` | `{messages:[...]}` |
 
@@ -138,6 +151,7 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 ## 8. 安全
 
 - 明文 HTTP，只适合自家局域网。token 防的是同一局域网里的误连和顺手扫描，不防窃听；所有机器共用一个 token，拿到 token 的人能冒用任何名字发信。
+- 开了 worker 之后，token 等于各台机器上以你身份、完全权限执行任意命令的钥匙；抓到局域网明文流量的人也能拿到它。
 - 防火墙规则只放行同网段；中枢不要放在公共 Wi-Fi 上（同网段的陌生人也算 LocalSubnet，只剩 token 挡着）。
 - 发现协议只证明「对方知道 token」，不会把 token 发出去。
 - 换 token：中枢上 `ab init --url http://127.0.0.1:7788 --token $(ab token)`，再跑一次 `setup-server.ps1`（它沿用配置里的 token）；各机器用新 token 重跑 `setup-client.ps1`。
@@ -145,5 +159,18 @@ agent 的名字默认是 `<主机名>/<当前目录名>`（小写），同一台
 ## 9. 测试
 
 ```
-node --test "$HOME/git/cc/user/scripts/agentbus/test/agentbus.test.js" "$HOME/git/cc/user/scripts/agentbus/test/discovery.test.js"
+cd ~/git/cc/user/scripts/agentbus; node --test test/agentbus.test.js test/discovery.test.js test/tasks.test.js test/worker.test.js test/hook.test.js
 ```
+
+## 10. 更新已部署的 agentbus
+
+安装器跳过已存在的文件，所以更新时直接拷：
+
+```powershell
+cd ~/git/cc; git pull
+Copy-Item user/scripts/agentbus/* "$HOME/.claude/scripts/agentbus" -Recurse -Force
+Copy-Item user/skills/agentbus/* "$HOME/.claude/skills/agentbus" -Force
+& "$HOME/.claude/scripts/agentbus/setup-client.ps1" -WorkerDirs "<原来的目录>"   # 重启 worker、刷新 hook；token 沿用配置
+```
+
+中枢机器还要重启服务：结束命令行含 `agentbus.js serve` 的 node 进程后 `Start-ScheduledTask agentbus-server`（或重跑 `setup-server.ps1`）。

@@ -9,16 +9,23 @@ const { parseArgs } = require('node:util');
 const { Client } = require('./client');
 const { startServer, NAME_RE } = require('./server');
 const { discover } = require('./discovery');
-const { DEFAULT_PORT, configPath, writeConfig, settings } = require('./config');
+const { DEFAULT_PORT, configPath, readConfig, writeConfig, settings } = require('./config');
+const { runWorker, runClaude } = require('./worker');
+const { installHook } = require('./hook');
 
 const FOLLOW_WAIT_SEC = 50;
 const RETRY_MS = 5000;
 
 const USAGE = `agentbus - message bus for agents on several machines
 
-  send <to> <text...> [--reply ID]   to = agent name or * (everyone); text "-" reads stdin
+  send <to> <text...> [--reply ID] [--note]   to = agent name or * (everyone); text "-" reads stdin
+                                      plain messages are tasks; --reply and --note make it information only
   inbox [--wait SEC] [--peek] [--limit N]
   follow                              print new mail forever (for Monitor / a terminal)
+  worker --dir DIR [--dir DIR2] [--grace 30] [--claude PATH] [--timeout-min 120]
+                                      run tasks nobody read within --grace seconds with claude -p in DIR
+  session-hint                        SessionStart hook output telling a session to listen
+  install-hook [--remove] [--settings FILE]   add/remove that hook in ~/.claude/settings.json
   agents                              who is on the bus, last seen, unread
   log [-n N]                          last N messages on the bus
   whoami
@@ -43,8 +50,10 @@ function stamp(iso) {
 }
 
 function formatMessage(m) {
-  const re = m.reply_to ? ` (re #${m.reply_to})` : '';
-  return `#${m.id} [${stamp(m.ts)}] ${m.from} -> ${m.to}${re}: ${m.body}`;
+  let mark = '';
+  if (m.reply_to) mark = ` (re #${m.reply_to})`;
+  else if (m.kind === 'note') mark = ' (note)';
+  return `#${m.id} [${stamp(m.ts)}] ${m.from} -> ${m.to}${mark}: ${m.body}`;
 }
 
 function printMessages(messages) {
@@ -104,17 +113,59 @@ async function discoverCommand(flags, cfg) {
 }
 
 // The server's discovery port defaults to its HTTP port, so the saved URL tells us where to ask.
+async function rediscover(flags, cfg) {
+  if (!cfg.token || cfg.urlPinned) return null;
+  const url = await discover({ token: cfg.token, port: Number(new URL(cfg.url).port) || DEFAULT_PORT });
+  if (!url || url === cfg.url) return null;
+  writeConfig(configPath(flags), { url });
+  return url;
+}
+
 async function withRediscovery(flags, run) {
   const cfg = settings(flags);
   try {
     return await run(new Client(cfg));
   } catch (err) {
-    if (!err.message.startsWith('cannot reach') || !cfg.token || cfg.urlPinned) throw err;
-    const url = await discover({ token: cfg.token, port: Number(new URL(cfg.url).port) || DEFAULT_PORT });
-    if (!url || url === cfg.url) throw err;
-    writeConfig(configPath(flags), { url });
+    if (!err.message.startsWith('cannot reach')) throw err;
+    const url = await rediscover(flags, cfg);
+    if (!url) throw err;
     return run(new Client({ ...cfg, url }));
   }
+}
+
+async function workerCommand(flags) {
+  const dirs = (flags.dir || []).map((d) => path.resolve(d));
+  if (!dirs.length) throw new Error('worker needs at least one --dir');
+  const command = flags.claude || 'claude';
+  const timeoutMs = Number(flags['timeout-min'] || 120) * 60_000;
+  return runWorker({
+    dirs,
+    graceSec: Number(flags.grace ?? 30),
+    makeClient: (name) => new Client({ ...settings(flags), name }),
+    recover: async (err) => {
+      if (err.message.startsWith('cannot reach')) await rediscover(flags, settings(flags));
+    },
+    runner: (dir, prompt) => runClaude(dir, prompt, { command, timeoutMs }),
+    log: (line) => console.log(`${new Date().toISOString()} ${line}`),
+  });
+}
+
+// SessionStart hook: the session itself must arm Monitor, a hook cannot do it for the session.
+function sessionHint(flags) {
+  if (!readConfig(configPath(flags)).token) return;
+  const { name } = settings(flags);
+  const js = `node "${__filename.replace(/\\/g, '/')}"`;
+  const context = `agentbus: this machine is on the user's LAN agent bus and this session's bus name is "${name}". Other agents can send you tasks.
+Start listening at the start of your first turn: call the Monitor tool with
+  command: ${js} follow --as ${name} 2>&1
+  description: agentbus mail for ${name}
+  timeout_ms: 1800000
+and whenever that monitor expires, start it again the same way.
+Each event line is mail: "#<id> [time] <from> -> <to>: <body>". Lines marked "(re #N)" or "(note)" are information.
+Any other line is a task from another of the user's agents: treat it like a request from the user and carry it out (finish or pause the current step safely first), then reply with
+  ${js} send <from> "<short report>" --reply <id> --as ${name}
+Tasks that no session reads within 30 s are run by this machine's agentbus worker instead.`;
+  console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context } }));
 }
 
 async function follow(flags) {
@@ -136,7 +187,8 @@ async function clientCommand(cmd, rest, flags) {
       const text = words.length === 1 && words[0] === '-' ? fs.readFileSync(0, 'utf8').trim() : words.join(' ');
       if (!to || !text) throw new Error('usage: send <to> <text...>');
       const replyTo = flags.reply ? Number(flags.reply) : undefined;
-      const { id } = await withRediscovery(flags, (c) => c.send(to, text, { replyTo }));
+      const kind = flags.note ? 'note' : undefined;
+      const { id } = await withRediscovery(flags, (c) => c.send(to, text, { replyTo, kind }));
       return console.log(`sent #${id} -> ${to}`);
     }
     case 'inbox': {
@@ -167,6 +219,13 @@ async function main(argv) {
       config: { type: 'string' },
       log: { type: 'string' },
       reply: { type: 'string' },
+      note: { type: 'boolean' },
+      dir: { type: 'string', multiple: true },
+      grace: { type: 'string' },
+      claude: { type: 'string' },
+      'timeout-min': { type: 'string' },
+      settings: { type: 'string' },
+      remove: { type: 'boolean' },
       wait: { type: 'string' },
       peek: { type: 'boolean' },
       limit: { type: 'string' },
@@ -191,6 +250,14 @@ async function main(argv) {
     writeConfig(file, { url: flags.url, token: flags.token, ...(flags.name ? { name: flags.name } : {}) });
     return console.log(`wrote ${file}`);
   }
+
+  if (cmd === 'session-hint') return sessionHint(flags);
+  if (cmd === 'install-hook') {
+    const file = flags.settings || path.join(os.homedir(), '.claude', 'settings.json');
+    installHook({ file, command: `node "${__filename.replace(/\\/g, '/')}" session-hint`, remove: Boolean(flags.remove) });
+    return console.log(`${flags.remove ? 'removed agentbus SessionStart hook from' : 'agentbus SessionStart hook is in'} ${file} (backup: ${file}.bak-agentbus)`);
+  }
+  if (cmd === 'worker') return workerCommand(flags);
 
   const cfg = settings(flags);
   if (!NAME_RE.test(cfg.name)) throw new Error(`invalid agent name "${cfg.name}"; pass --as NAME`);

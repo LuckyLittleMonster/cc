@@ -11,6 +11,7 @@ const MAX_BODY_BYTES = 64 * 1024;
 const MAX_WAIT_SEC = 60;
 const DEFAULT_LIMIT = 100;
 const LOOPBACK = new Set(['127.0.0.1', '::1', 'localhost']);
+const KINDS = new Set(['task', 'note']);
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -102,14 +103,15 @@ async function startServer({ host = '0.0.0.0', port = 7788, discoveryPort, token
     'GET /health': async () => ({ ok: true }),
 
     'POST /v1/send': async (req) => {
-      const { from, to, body, reply_to } = await readJson(req);
+      const { from, to, body, reply_to, kind } = await readJson(req);
       checkName(from, 'from');
       if (to !== '*') checkName(to, 'to');
       if (typeof body !== 'string' || body.length === 0) throw new HttpError(400, 'body must be a non-empty string');
       if (Buffer.byteLength(body) > MAX_BODY_BYTES) throw new HttpError(413, `body over ${MAX_BODY_BYTES} bytes`);
       if (reply_to !== undefined && !Number.isInteger(reply_to)) throw new HttpError(400, 'reply_to must be an integer');
+      if (kind !== undefined && !KINDS.has(kind)) throw new HttpError(400, 'kind must be task or note');
       store.touch(from);
-      const msg = store.addMessage({ from, to, body, reply_to });
+      const msg = store.addMessage({ from, to, body, reply_to, kind });
       wake();
       return { id: msg.id };
     },
@@ -126,6 +128,15 @@ async function startServer({ host = '0.0.0.0', port = 7788, discoveryPort, token
       const { messages, cursor } = store.pending(name, limit);
       if (!peek) store.advance(name, cursor);
       return { messages };
+    },
+
+    'POST /v1/take': async (req) => {
+      const { name, min_age, limit } = await readJson(req);
+      checkName(name, 'name');
+      const minAgeSec = Math.max(Number(min_age) || 0, 0);
+      const max = Math.min(Math.max(Number(limit) || 1, 1), DEFAULT_LIMIT);
+      store.touch(name);
+      return { messages: store.take(name, minAgeSec * 1000, max) };
     },
 
     'GET /v1/agents': async () => ({
